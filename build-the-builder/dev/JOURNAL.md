@@ -205,3 +205,11 @@ agent's output; and an auditor without a checklist tends to approve.
 | Time (UTC) | Workflow / version | Brief | Style | Reps | Score | Failed cases | Cause |
 |---|---|---|---|---|---|---|---|
 | 2026-10-10 17:5x | `yasar-extract-a` v1 (SPEC extracted by the builder, no hand input) | A | none | 1 | **9/10** | PUB-07 | systematic date-rule error, see above; median slowest turn 2 s |
+
+### Raw-material stress test (Phase 4)
+
+`dev/specs/raw-a/`: Brief A rewritten as an email, a handbook extract, a later legal memo that changes three rules,
+and a CSV code list. Extraction (125 s, 4 calls): **all three memo overrides applied** (late deadline 7 -> 5 business
+days, holiday 2026-11-11 removed and 2026-10-30 added, callback window 09:00-18:00), the unchanged early band kept,
+the CSV became the outcome table exactly, every override recorded in `free_rules` with both quotes, and the Reworder
+fixed "this call is recorded". Lint and snippet runs pass.
