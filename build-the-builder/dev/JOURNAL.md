@@ -113,6 +113,14 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
   2026-10-23; early-band deadline (12th business day, skipping the holiday 2026-10-26) = 2026-11-02; attempt-1 date
   (last business day of this week) = 2026-10-16. These match PUB-04, PUB-06, PUB-07, PUB-10 and PUB-13.
 
+- **`type: "date"` extraction resolves relative dates against the REAL clock, not the call variable `now`**
+  (2026-10-10, `dev/exp_date_anchor.py`, `results/exp-date-anchor.txt`): with `now = 2026-10-14T11:00` and the real
+  date 2026-10-10, "I can pay tomorrow." gave `when_date = 2026-10-11`. The same turn's `type: "string"` field
+  `when_text` held "tomorrow" verbatim (confidence 1). "Today is {{now}}" in the `task_message` did not help: the
+  extractor does not see the dialogue prompt. Rule for the generator: never extract customer dates with
+  `type: "date"`; extract the words as a string and resolve them in code (`builder/snippets/dates.py`).
+  Every practice case uses `now = 2026-10-14`, while the final is scored on other days, so an agent that trusts
+  the built-in date type is wrong on every relative date.
 - **Mock rejects unknown case ids** (2026-10-10): `POST /v1/practice/sessions {"case": "PUB-99"}` ->
   `{"ok": false, "error": "unknown practice case"}`. So the builder cannot create its own test customers on a
   hidden brief; the hidden-brief self-test must be brief-independent (lint, local snippet runs, dry run, chat).
