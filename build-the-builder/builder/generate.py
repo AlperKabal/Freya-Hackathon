@@ -835,7 +835,7 @@ try:
         st, say, nxt = step(st, ev, plan, now.date(), CFG)
     vars['neg_turn_done'] = turn
     vars['nst'] = json.dumps(st)
-    for k in ('reply_kind', 'day_text', 'amount_text', 'about_text'):
+    for k in ('day_text', 'amount_text', 'about_text'):                # reply_kind is an enum: '' would be rejected
         vars[k] = ''
     vars['say_text'] = say or str(vars.get('say_text') or '')
     vars['neg_next'] = nxt
@@ -862,7 +862,8 @@ except Exception:
         tools = [self.cp_tool(i, None) for i in range(1, self.maxp + 1)]
         pending_done = {"logic": "or", "conditions": [{"logic": "and", "conditions": [{"variable": f"res_{i}", "operator": "not_equals", "operand": "pending"} for i in range(1, self.maxp + 1)]}]}
         after = self.notes_by_product() if self.notes else "finalize"
-        self.nodes["record"] = {"name": "record", "node_type": "conversation", "on_enter": {"type": "silent"},
+        # on_enter llm: a node entered with a silent on_enter does not speak or call a tool in that turn (seen in a run)
+        self.nodes["record"] = {"name": "record", "node_type": "conversation", "on_enter": {"type": "llm"}, "on_enter_first_entry_only": True,
                                 "task_message": ("The customer confirmed. Do this now, one tool call per message: {{record_instr}} "
                                                  f"Follow the what_to_do_next line of every tool result. If a call fails the first time, say exactly '{rec['retry_say']}' and call the same tool again. "
                                                  "Never say a promise is recorded before its tool result says so."),
