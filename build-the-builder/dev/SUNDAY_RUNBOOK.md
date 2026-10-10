@@ -14,6 +14,7 @@ python dev/check_claude_login.py           # "auth: Claude login" or API key, mo
 python dev/test_spec_schema.py | tail -1   # all good
 python dev/test_dates.py | tail -1         # all good
 python dev/test_negotiation.py | tail -1   # all good
+python dev/test_situation_guard.py | tail -1   # all good
 python dev/check_no_brief_literals.py | tail -1   # clean
 ```
 
@@ -39,7 +40,8 @@ python dev/check_no_brief_literals.py | tail -1   # clean
    - `lint: pass`, snippets `pass`, `dry run: pass`, `saved and published`, `exported`.
 4. Open `out/yasar-final-1.spec.json` and compare by eye with the brief: dates and holidays, band thresholds and
    deadline rules, outcome and reason names (must be the API's enum values), memo overrides (look for `Override:`
-   in `free_rules`).
+   in `free_rules`). For every situation that transfers the call: `not_this` rules out a plain refusal and a question
+   about options, and `evidence_words` holds only words of that request (no everyday word such as a word for paying).
 5. Repeat for the second brief with slot `yasar-final-2`.
 
 Do **not** run `tools/run_cases.py` on a hidden brief: the practice customers belong to Brief A/B and would test the
