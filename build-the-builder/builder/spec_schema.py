@@ -162,6 +162,7 @@ SCHEMA = {
     },
     "situations": [{
         "id": str, "trigger": str, "not_this": str,   # not_this: what looks similar but is another situation
+        Opt("evidence_words"): [str],                 # an explicit request that cannot be undone: word stems the customer's own words must contain
         "stages": [Enum(STAGES)],
         "say": str, "say_exact": bool,                # say: a sentence the agent speaks ("" if none); say_exact: the brief prescribes these words
         "guidance": str,                              # how the agent must behave here (an instruction, never spoken)

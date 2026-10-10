@@ -255,3 +255,52 @@ fixed "this call is recorded". Lint and snippet runs pass.
 - Cleanup does not change workflow generation or qualify orch for submission.
 - Verification after cleanup: `test_spec_schema.py`, `test_dates.py`, and
   `test_negotiation.py` passed; `check_no_brief_literals.py` reported clean.
+
+### An ambiguous reply must not transfer the call (2026-10-11, branch `yasar/fix-situation-guard`)
+
+**Failure (orch, `--style pieces`).** Opening, identity ("44 71" joined) and the debt statement were right. To the
+first ask the customer said "I can't, what are the other options". Extraction wrote `reply_kind` = the situation
+that transfers to the restructuring queue, and `neg_eval` transferred at once. Brief A wants: a no to today with no
+date and no amount is a flat refusal (rule 30, attempt 1); a question the agent cannot answer gets a short answer
+(rules 33, 44); rule 41 transfers only on a request for a new plan or lower instalments. The ledger would close as
+`transferred` where a promise or `refused` is expected.
+
+**Cause.** Code decided correctly on a wrong classification. Three things let it through: the enum text said "When a
+special situation applies, choose it over the others" and gave a question about options no better home; the SPEC's
+`not_this` did not rule that reply out; nothing checked the customer's own words before an action that cannot be
+undone. Reproduced without the platform: on `main` the generated `neg_eval`, fed that turn, goes to the transfer
+node; on this branch it goes to `negotiate_q` with attempt 1 (`dev/test_situation_guard.py`, part 3).
+
+**Fix, three layers.**
+
+| Layer | Where | What |
+|---|---|---|
+| Understand | `generate.py` (orch enum text; v1 prompt and tool-call descriptions) | A situation is chosen only when the message itself clearly says it; by itself a plain no, "cannot pay" or a question about options is not a situation (the text does not say which other value, so "too much" keeps its own definition). v1: the same sentence above the situation list (a plain no stays with the rules above it), and each exit tool's description carries `not_this` |
+| Describe | `spec_schema.py`, `extract.py` (field guide, Reader, Auditor) | For a situation that transfers or ends the call the Reader writes `not_this` so that it rules out those everyday replies, and the new optional `evidence_words`: word stems from the brief's own wording of the request, plus synonyms |
+| Decide | `snippets/negotiation.py`, `neg_eval` | `situation_confirmed`: a situation with evidence words acts only when the customer's own words (`said_text`, a new extraction field) contain one. Otherwise the turn is the kind `UNCONFIRMED`: answer first in one sentence, then the next persuasion offer; at the read-back, read back again; with no attempt left, repeat the open offer |
+
+| Decision | Reason |
+|---|---|
+| Evidence words live in the SPEC, never in `builder/` | They are the brief's vocabulary; `check_no_brief_literals.py` stays clean |
+| The generator drops an evidence word that occurs in the agent's own fixed sentences (first ask, debt statement, product names, read-back question) or has fewer than three letters | A list with an everyday word of the call (a word for paying, the product's name) would let the echo of the agent's question count as evidence; the builder runs once on a hidden brief and nobody can correct the list |
+| Code overrules the extraction only on evidence: no evidence words, or no extracted words, and the extraction stands | Never worse than before the change, whatever the platform does with the new field |
+| Words without evidence: not acted on the first time, acted on the second | A real request made in unexpected words costs one extra turn instead of never being transferred |
+| `reply_kind` is set to `unclear` after every turn | An enum variable cannot be cleared with `''`, so a turn whose kind was not extracted repeated the last kind (a second count of a situation, a second "accept") |
+| `said_text` only when a situation has evidence words; `min_confidence` 0.05 | No extra field for a SPEC without them; a copy needs no confidence gate and a long value must not be dropped |
+| v1 gets the text layers only | A code gate there needs a tool-call transition into a code node and back in the same turn, which is not verified |
+| "I am connecting you now." is added only when the situation's sentence does not announce the transfer | The two sentences said the same thing twice |
+
+**Not verified on the platform (this clone has no keys): check before relying on it.**
+- That the extraction model copies the latest message into `said_text` and that a long value is kept. If it is not,
+  the guard is off for that turn (the extraction stands), nothing else changes.
+- That a code node may write a valid enum value (`unclear`) to an extraction variable. Only `''` is known to be
+  rejected; in the hop experiment the note written by the same node as a `''` write did arrive, so a rejected write
+  should not take the node's other writes with it.
+- The agent model's wording of the one-sentence answer in `negotiate_q`.
+- That a fresh extraction fills `evidence_words` well. A SPEC extracted before this change has none: rebuild
+  without `--spec`, or the code layer stays off.
+
+To run with keys: `--only PUB-09 --reps 3` on orch (a real request must still transfer), then
+`--style pieces`, `asks_back` and `talkative` on Brief A, reading every call that ends `transferred`.
+Local result: `test_situation_guard.py` 111 checks, the three older suites and the literal check pass; lint and
+local runs pass for Brief A, A+B and imaginary C in both modes. No simulation was run for this change.
