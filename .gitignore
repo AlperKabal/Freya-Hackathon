@@ -1,0 +1,21 @@
+# Secrets and local state (never commit)
+env.sh
+.env
+.env.*
+!.env.example
+.freya-agents.json
+.personas.json
+*.zip
+hidden/
+submission/
+
+# Run output
+results/
+out/
+traces/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/

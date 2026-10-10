@@ -1,0 +1,17 @@
+outcome,reason,used when
+promise,,at least one promise was recorded
+paid,,customer already paid (4.8)
+transferred,restructuring,4.8 new plan
+transferred,human,4.8 human
+transferred,support,4.6 hardship accepted
+no_promise,refused,4.6 attempts used up; 4.8 does not want to talk
+no_promise,hardship,4.6 hardship declined
+no_promise,dispute,4.8 dispute
+no_promise,service_error,4.7 recording failed twice
+not_verified,failed,4.2 three wrong answers
+not_verified,declined,4.2 declined
+not_reached,callback,4.1 callback booked
+not_reached,no_callback,4.1 no callback
+not_reached,wrong_number,4.1 wrong number
+not_reached,deceased,4.1 deceased
+not_reached,unclear,opening unclear
