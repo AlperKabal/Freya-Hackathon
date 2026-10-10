@@ -40,7 +40,10 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
 ## Platform and kit facts (verified by us)
 
 - The kit lives in `build-the-builder/`. All kit commands run from that folder (`freya.py` is imported from cwd).
-- On this Windows machine `python3` is not available (Store alias); use `python` (3.14.6).
+- On this Windows machine `python3` resolved to the Windows Store alias. **Fixed outside the repo**: a shim
+  `~/bin/python3` (`exec python "$@"`); Git Bash puts `~/bin` first on PATH, so `python3` now runs
+  `C:\Python314\python.exe` (3.14.6). Kit files and the skill stay unchanged. Several Pythons are installed
+  (3.12, 3.13, 3.14, anaconda, msys2): install packages with `python -m pip`, not bare `pip`.
 - `anthropic` and `claude_agent_sdk` are not installed yet.
 - `.claude/skills/build-phone-agent/SKILL.md` was **missing from the repository** (dropped because `.claude/` is a
   hidden folder). **Restored** from the organisers' `build-the-builder-v3.zip`; every other file in the zip is
