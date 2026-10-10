@@ -375,7 +375,7 @@
     "opening",
     "third_party"
    ],
-   "say": "Apologise for the call.",
+   "say": "I am sorry for the trouble.",
    "say_exact": false,
    "first_response": "",
    "threshold": 1,
@@ -388,7 +388,8 @@
     "outcome": "not_reached",
     "reason": "wrong_number"
    },
-   "source": "A8"
+   "source": "A8",
+   "guidance": ""
   },
   {
    "id": "deceased",
@@ -411,7 +412,8 @@
     "outcome": "not_reached",
     "reason": "deceased"
    },
-   "source": "A9"
+   "source": "A9",
+   "guidance": ""
   },
   {
    "id": "hardship",
@@ -421,7 +423,7 @@
     "negotiation",
     "confirmation"
    ],
-   "say": "Say one short sentence of sympathy. Make no persuasion attempt.",
+   "say": "",
    "say_exact": false,
    "first_response": "",
    "threshold": 1,
@@ -462,7 +464,8 @@
     "outcome": "no_promise",
     "reason": "hardship"
    },
-   "source": "A32"
+   "source": "A32",
+   "guidance": "Say one short sentence of sympathy. Make no persuasion attempt."
   },
   {
    "id": "restructuring",
@@ -472,7 +475,7 @@
     "negotiation",
     "confirmation"
    ],
-   "say": "Do not describe a plan. Say you will connect them with the team that handles this.",
+   "say": "I will connect you with the team that handles this.",
    "say_exact": false,
    "first_response": "",
    "threshold": 1,
@@ -490,7 +493,8 @@
     "outcome": "transferred",
     "reason": "restructuring"
    },
-   "source": "A41"
+   "source": "A41",
+   "guidance": "Do not describe a plan."
   },
   {
    "id": "human",
@@ -502,7 +506,7 @@
     "negotiation",
     "confirmation"
    ],
-   "say": "Say you will connect them.",
+   "say": "",
    "say_exact": false,
    "first_response": "Ask once whether you can help them first.",
    "threshold": 2,
@@ -520,7 +524,8 @@
     "outcome": "transferred",
     "reason": "human"
    },
-   "source": "A42"
+   "source": "A42",
+   "guidance": "Say you will connect them."
   },
   {
    "id": "already_paid",
@@ -548,7 +553,8 @@
     "outcome": "paid",
     "reason": ""
    },
-   "source": "A39"
+   "source": "A39",
+   "guidance": ""
   },
   {
    "id": "dispute",
@@ -558,7 +564,7 @@
     "negotiation",
     "confirmation"
    ],
-   "say": "Do not argue and do not ask for a promise.",
+   "say": "",
    "say_exact": false,
    "first_response": "",
    "threshold": 1,
@@ -576,7 +582,8 @@
     "outcome": "no_promise",
     "reason": "dispute"
    },
-   "source": "A40"
+   "source": "A40",
+   "guidance": "Do not argue and do not ask for a promise."
   },
   {
    "id": "not_talking",
@@ -610,7 +617,8 @@
      }
     }
    },
-   "source": "A45"
+   "source": "A45",
+   "guidance": ""
   }
  ],
  "faq": [

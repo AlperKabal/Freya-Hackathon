@@ -149,7 +149,7 @@ class Gen:
         eff = effect or sit["effect"]
         ob = (eff.get("outcome_by_stage") or {}).get(stage_key)
         outcome, reason = (ob["outcome"], ob["reason"]) if ob else (eff["outcome"], eff["reason"])
-        say = sit["say"] if sit["say_exact"] else ""
+        say = sit["say"]                                          # a speakable sentence by SPEC contract
         if any(a["type"] == "transfer" for a in eff["actions"]):
             say = (say + " I am connecting you now.").strip()        # spoken after the transfer call ran
         key = f"{sit['id']}_{stage_key}" if eff.get("outcome_by_stage") else sit["id"]
@@ -257,8 +257,8 @@ for i in range(1, int(CFG['maxp']) + 1):
             line += f" The first time: {x['first_response']} If it happens {x['threshold']} times, call transition_to_" + "{node}" + "."
         else:
             line += " Call transition_to_{node}."
-        if x["say"] and not x["say_exact"]:
-            line += f" ({x['say']})"
+        if x["guidance"]:
+            line += f" ({x['guidance']})"
         return line.replace("{node}", self.situation_exit(x, "before_identity" if "identity" in x["stages"] or "opening" in x["stages"] else "after_identity"))
 
     def third_party(self):
@@ -608,8 +608,8 @@ except Exception:
         others = []
         for x in neg_sits:
             line = f"- {x['trigger']} {x['not_this']}".strip() + " "
-            if x["say"]:
-                line += (f"Say: '{x['say']}' " if x["say_exact"] else x["say"] + " ")
+            if x["guidance"]:
+                line += x["guidance"] + " "
             if x.get("offer"):
                 # the offer is made once by its own node; the model here only hands over
                 line = f"- {x['trigger']} {x['not_this']}".strip() + f" Call transition_to_{self.offer_node(x)} at once, without saying anything else first. "
@@ -671,7 +671,7 @@ except Exception:
         desc = ("The customer's answer to this offer: " + o["question"] + " accept = they clearly want it. decline = they say no or do not want it."
                 + (" proposal = instead they name a payment date or an amount themselves." if "proposal" in values else "") + " Empty if unclear.")
         task = (f"The customer just said something that means: {x['trigger']} "
-                + (f"Say: '{x['say']}' " if x["say_exact"] and x["say"] else (x["say"] + " " if x["say"] else ""))
+                + (f"Say: '{x['say']}' " if x["say"] else "") + (x["guidance"] + " " if x["guidance"] else "")
                 + f"Then, in the same turn: {o['question']} Make this offer ONCE only and never repeat it. "
                 + ("Make no persuasion attempt and do not ask for any payment. " if x["suppresses_persuasion"] else "")
                 + "If the customer asks a question, answer it in one sentence without repeating the offer. Do not call any tool.")

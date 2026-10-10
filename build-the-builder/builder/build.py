@@ -36,11 +36,19 @@ def main(argv=None):
         tools = parse_openapi(api_path)["tools"]
         t.event("ingest", f"{len(docs)} brief file(s), {sum(len(d['text']) for d in docs)} chars; tools: {', '.join(sorted(tools))}")
 
+        out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
         if a.spec:
             spec = json.loads(pathlib.Path(a.spec).read_text(encoding="utf-8"))
             t.event("spec", f"from file {a.spec} (no model call)")
         else:
-            raise SystemExit("SPEC extraction is not implemented yet (Phase 4); pass --spec")
+            from builder.extract import extract
+            from builder.llm import run
+            spec, rep = run(extract(docs, tools, t))
+            (out / f"{a.slot}.spec.json").write_text(json.dumps(spec, indent=1, ensure_ascii=False), encoding="utf-8")
+            (out / f"{a.slot}.audit.json").write_text(json.dumps(rep, indent=1, ensure_ascii=False), encoding="utf-8")
+            t.event("spec", f"extracted: {rep['repairs']} validation repair(s), {len(rep['audit_issues'])} auditor finding(s), "
+                            f"auditor repair {'applied' if rep['audit_applied'] else 'not applied'} -> {(out / (a.slot + '.spec.json')).relative_to(KIT)}")
+            for i in rep["audit_issues"]: t.event("audit", f"{i.get('rule', '')[:80]} | {i.get('problem', '')[:120]}")
         errs = validate(spec, tools)
         if errs:
             for e in errs: t.event("spec-error", e)
@@ -51,7 +59,6 @@ def main(argv=None):
                         f"holidays={len(spec['calendar']['holidays'])}")
 
         wf = generate.build(spec, tools)
-        out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
         wf_path = out / f"{a.slot}.workflow.json"
         wf_path.write_text(json.dumps(wf, indent=1, ensure_ascii=False), encoding="utf-8")
         n_tools = sum(len(n.get("tools") or []) for n in wf["nodes"].values()) + len(wf.get("tools") or [])

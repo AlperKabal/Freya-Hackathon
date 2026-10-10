@@ -163,7 +163,8 @@ SCHEMA = {
     "situations": [{
         "id": str, "trigger": str, "not_this": str,   # not_this: what looks similar but is another situation
         "stages": [Enum(STAGES)],
-        "say": str, "say_exact": bool,
+        "say": str, "say_exact": bool,                # say: a sentence the agent speaks ("" if none); say_exact: the brief prescribes these words
+        "guidance": str,                              # how the agent must behave here (an instruction, never spoken)
         "first_response": str, "threshold": int,     # say first_response until said `threshold` times, then act
         "suppresses_persuasion": bool, "priority": int,
         "proposal_still_handled": bool,               # a date or amount the customer names is still recorded
