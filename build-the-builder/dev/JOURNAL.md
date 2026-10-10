@@ -21,6 +21,30 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
 | Time (UTC) | Workflow / version | Brief | Style | Reps | Score | Failed cases | Cause |
 |---|---|---|---|---|---|---|---|
 | 2026-10-10 16:04 | `yasar-base` v1 (base agent) | A | none | 1 | **0/10** (README said ~2/13) | all | see "Baseline analysis" below; median slowest turn 5 s, so not a slow-model run |
+| 2026-10-10 16:28 | `yasar-base` v1 | A+B | none | 1 | **0/13** | all | A failures shift run to run (PUB-03 outcome `no_promise/refused` vs `None` before; PUB-08 `None` vs `promise`): the end-of-call guess is random. PUB-13: model put the sum 1200 on both products |
+| 2026-10-10 17:16-17:48 | example builder (`brief-a` slot, agent `d620a1b2...`) | A | none | 1 (x7 runs) | 9, 1/1, 9, 9, 0/1 (reps 3), 8, **8/10 last** | a different case each run: PUB-10, PUB-04, PUB-06, then PUB-06+PUB-10 | see "Example builder baseline" |
+
+### Example builder baseline (Brief A)
+
+- Build: **1934 s (32 min, over the 30-minute limit)**, 34 turns, `claude-opus-5-5` via Claude Pro login,
+  reported API-equivalent cost $1.70. It ran `run_cases.py` 7 times (the skill says at most 3 fix rounds).
+- Last run 8/10; peak 9/10. Failing cases rotate between runs, so under the 3-of-3 rule it would score lower.
+  PUB-06 with `--reps 3`: 0/3.
+- It wrote a generator script `out/gen_a.py` (715 lines) and a 30-node workflow: `init` code node -> `opening`
+  (extracts a `party` enum, branches with `equals`) -> `third_party` -> `check_callback` (code) -> `schedule_cb`
+  (api_request) / `verify` (post-hook) -> `get_account` (api_request) -> `prepare_deal` (code) -> one big
+  `negotiate` node with `create_promise` and **9 exits, 7 of them `matches_intent`** -> one `set_*` code node per
+  outcome -> a single `final_end`. Very close to our planned design, except that its exits from `negotiate` are
+  semantic.
+- `gen_a.py` hard-codes Brief A values (holidays, bank name, a fallback `today_iso = '2026-10-14'`). Fine for a
+  per-brief LLM builder, forbidden in our `builder/`.
+- PUB-06 cause: the floor was offered twice (attempt counting lives in the model's memory).
+- PUB-10 cause: the judge read the check "does not say 'recorded' before a successful call" literally and
+  flagged both the required opening "this call is recorded" and "the promise was not recorded". Lesson: the judge
+  is literal. Before a success, avoid the confirmation word even in negations and in unrelated sentences, while
+  still stating the recording notice (e.g. "we record this call"). To verify with an experiment.
+- The example builder lists `dev/` and read `dev/show_call.py`; it did not open the journal or the prompt. An agent
+  run inside the kit folder can see everything in it.
 
 ### Baseline analysis (base agent, Brief A)
 
