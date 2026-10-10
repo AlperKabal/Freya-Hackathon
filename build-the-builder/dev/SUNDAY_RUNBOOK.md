@@ -8,7 +8,7 @@ All commands run in Git Bash, in `build-the-builder/`, on branch `yasar/hybrid-b
 ## Before 17:00 UTC
 
 ```bash
-git pull                                   # latest builder
+git pull --ff-only                          # published branch with upstream configured
 source env.sh                              # FREYA_API_KEY, FREYA_API_URL, FREYA_BANK_TEAM_KEY
 python dev/check_claude_login.py           # "auth: Claude login" or API key, model answers
 python dev/test_spec_schema.py | tail -1   # all good
@@ -63,7 +63,8 @@ not deterministic); keep the run whose trace and SPEC are right, and submit that
 ```bash
 cp out/yasar-final-1.export.json submission/<brief-1-name>.workflow.json
 cp out/yasar-final-2.export.json submission/<brief-2-name>.workflow.json
-git add builder dev/JOURNAL.md traces/yasar-final-*.log
+git add builder dev/JOURNAL.md
+git add -f traces/<selected-final-1>.log traces/<selected-final-2>.log
 git commit -m "final: builds for the hidden briefs"
 git push origin yasar/hybrid-builder
 git rev-parse HEAD                          # the commit for the form

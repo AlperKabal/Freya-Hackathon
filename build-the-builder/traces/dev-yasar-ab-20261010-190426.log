@@ -1,9 +1,0 @@
-[    0.0s] start      2026-10-10T19:04:26+0300
-[    0.0s] input      briefs=['briefs/brief-a.md', 'briefs/brief-b.md'] tool_api=tools/openapi.json
-[    0.0s] ingest     2 brief file(s), 12567 chars; tools: add_note, close_call, create_promise, get_account, schedule_callback, transfer_to_agent, verify_identity
-[    0.0s] spec       from file dev/specs/brief-ab.json (no model call)
-[    0.0s] spec       valid: bank='Freya Bank', identity questions=2, bands=2, situations=8, outcomes=6, max products=3, notes=on, holidays=5
-[    0.0s] generate   29 nodes, 14 tools -> out\dev-yasar-ab.workflow.json
-[    0.0s] selftest   lint: pass
-[    1.4s] selftest   code nodes and hooks executed locally on 36 calendar days: pass
-[    1.4s] end        2026-10-10T19:04:27+0300 status=ok (not saved) model_calls=0 seconds=1

@@ -241,3 +241,17 @@ fixed "this call is recorded". Lint and snippet runs pass.
   **X4** an engine-run `create_promise` (api_request) with amount and date baked from code variables records the
   amount as a number; **X5** a `pre_process_code` on a pre_actions api_call runs (it can write variables).
   Consequence: orchestrator v3 speaks by TTS and records by engine-run calls; the model only answers questions.
+
+### Repository cleanup before branch publication (2026-10-10)
+
+- Paused negotiation changes at the owner's request; publish the current builder
+  on `yasar/hybrid-builder` for parallel development.
+- Removed tracked generated traces from the current tree (local copies retained),
+  five completed one-off experiment scripts, and the obsolete root test-set copy.
+  Runtime modules, regression tests, reference SPECs, and the supplied kit remain.
+- Ignore generated traces, archives, hidden inputs, submission copies, and local
+  environments. Selected final traces must be staged explicitly with `git add -f`.
+- Added root setup/build/check instructions and pinned the tested SDK version.
+- Cleanup does not change workflow generation or qualify orch for submission.
+- Verification after cleanup: `test_spec_schema.py`, `test_dates.py`, and
+  `test_negotiation.py` passed; `check_no_brief_literals.py` reported clean.
