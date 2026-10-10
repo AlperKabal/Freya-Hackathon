@@ -10,6 +10,12 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
 | 2026-10-10 | `.gitignore` at repo root (not inside `build-the-builder/`) | Patterns without a leading slash cover the whole repo |
 | 2026-10-10 | New code goes to `build-the-builder/builder/`, dev tools to `build-the-builder/dev/` | Kit files stay unchanged; `run_cases.py` resolves paths relative to the kit folder |
 
+## Freya slots (ours)
+
+| Slot | workflow_id | agent_id | Content |
+|---|---|---|---|
+| `yasar-base` | `c11d1a5b-d386-4429-a11c-311ca824da28` | `96ec991c-9aaf-4c2b-b5aa-7635acc439a4` | `examples/base-agent.json`, unchanged |
+
 ## Test runs
 
 | Time (UTC) | Workflow / version | Brief | Style | Reps | Score | Failed cases | Cause |
@@ -41,5 +47,7 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
 - `docs/workflow-format.md` says "no `null` values", but `examples/base-agent.json` contains
   `"max_turn_transition": null` and `"passthrough_default_transition": null` (it looks like a platform export).
   Check with a dry run whether the API accepts these nulls; our generator will emit no nulls either way.
+  **Partial answer (2026-10-10):** `POST /api/v2/workflow` accepted `base-agent.json` with these two nulls.
+  Not tested: nulls in other fields. Rule for us stays: emit no nulls.
 - The base agent's `close_call` bakes `{{outcome}}`/`{{reason}}`, but nothing in the workflow ever sets those
   variables, so the end-of-call model guesses them. Confirm in a transcript of the baseline run.
