@@ -1,0 +1,12 @@
+[    0.0s] start      2026-10-10T21:26:41+0300
+[    0.0s] input      briefs=['briefs/brief-a.md'] tool_api=tools/openapi.json
+[    0.0s] ingest     1 brief file(s), 10174 chars; tools: add_note, close_call, create_promise, get_account, schedule_callback, transfer_to_agent, verify_identity
+[    0.0s] spec       from file out/yasar-extract-a.spec.json (no model call)
+[    0.0s] spec       valid: bank='Freya Bank', identity questions=2, bands=2, situations=8, outcomes=6, max products=1, notes=off, holidays=5
+[    0.0s] generate   34 nodes, 3 tools -> out\yasar-extract-a.workflow.json
+[    0.1s] selftest   lint: pass
+[    2.0s] selftest   code nodes and hooks executed locally on 36 calendar days: pass
+[    3.0s] selftest   dry run (validate_workflow): pass
+[    5.5s] freya      saved and published: workflow_id=57c096be-1d80-412b-9048-c1360519f139 agent_id=46fb1c38-f443-4417-b2c8-a4cb717fd9ec version=2
+[    6.1s] freya      exported -> out\yasar-extract-a.export.json
+[    6.1s] end        2026-10-10T21:26:47+0300 status=ok model_calls=0 seconds=6

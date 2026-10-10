@@ -1,0 +1,9 @@
+[    0.0s] start      2026-10-10T20:39:00+0300
+[    0.0s] input      briefs=['briefs/brief-a.md'] tool_api=tools/openapi.json
+[    0.0s] ingest     1 brief file(s), 10174 chars; tools: add_note, close_call, create_promise, get_account, schedule_callback, transfer_to_agent, verify_identity
+[    0.0s] spec       from file out/dev-extract-a.spec.json (no model call)
+[    0.0s] spec       valid: bank='Freya Bank', identity questions=2, bands=2, situations=8, outcomes=6, max products=1, notes=off, holidays=5
+[    0.0s] generate   33 nodes, 3 tools -> out\dev-extract-a.workflow.json
+[    0.0s] selftest   lint: pass
+[    1.6s] selftest   code nodes and hooks executed locally on 36 calendar days: pass
+[    1.6s] end        2026-10-10T20:39:02+0300 status=ok (not saved) model_calls=0 seconds=2

@@ -1,0 +1,18 @@
+[    0.0s] start      2026-10-10T21:43:41+0300
+[    0.0s] input      briefs=['dev/specs/raw-a/1-email.md', 'dev/specs/raw-a/2-policy-extract.md', 'dev/specs/raw-a/3-legal-memo.md', 'dev/specs/raw-a/4-code-list.csv'] tool_api=tools/openapi.json
+[    0.0s] ingest     4 brief file(s), 8329 chars; tools: add_note, close_call, create_promise, get_account, schedule_callback, transfer_to_agent, verify_identity
+[    0.1s] model      #1 claude-opus-5-5: Reader: documents -> SPEC
+[    1.8s] model      #2 claude-opus-5-5: Binder: tool API -> field mapping
+[    9.9s] model      Binder: tool API -> field mapping: 1616 chars in 8 s
+[  101.3s] model      Reader: documents -> SPEC: 23130 chars in 101 s
+[  101.3s] model      #3 claude-opus-5-5: Reworder: opening.first_sentence before any save
+[  106.2s] model      Reworder: opening.first_sentence before any save: 95 chars in 5 s
+[  106.2s] spec       reworded opening.first_sentence: "Hello, this is Freya Bank's digital assistant calling, and this call is recorded." -> "Hello, this is Freya Bank's digital assistant calling, and we record this call."
+[  106.2s] model      #4 claude-opus-5-5: Auditor: SPEC vs documents, rule by rule
+[  123.7s] model      Auditor: SPEC vs documents, rule by rule: 14 chars in 17 s
+[  123.7s] spec       extracted: 0 validation repair(s), 0 auditor finding(s), auditor repair not applied -> out\dev-raw-a.spec.json
+[  123.7s] spec       valid: bank='Freya Bank', identity questions=2, bands=2, situations=8, outcomes=6, max products=1, notes=off, holidays=5
+[  123.7s] generate   34 nodes, 3 tools -> out\dev-raw-a.workflow.json
+[  123.7s] selftest   lint: pass
+[  125.5s] selftest   code nodes and hooks executed locally on 35 calendar days: pass
+[  125.5s] end        2026-10-10T21:45:47+0300 status=ok (not saved) model_calls=4 seconds=125

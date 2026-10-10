@@ -1,0 +1,15 @@
+[    0.0s] start      2026-10-10T20:34:49+0300
+[    0.0s] input      briefs=['briefs/brief-a.md', 'briefs/brief-b.md'] tool_api=tools/openapi.json
+[    0.0s] ingest     2 brief file(s), 12567 chars; tools: add_note, close_call, create_promise, get_account, schedule_callback, transfer_to_agent, verify_identity
+[    0.1s] model      #1 claude-opus-5-5: Reader: documents -> SPEC
+[    1.7s] model      #2 claude-opus-5-5: Binder: tool API -> field mapping
+[    9.1s] model      Binder: tool API -> field mapping: 1633 chars in 7 s
+[  112.9s] model      Reader: documents -> SPEC: 28838 chars in 113 s
+[  112.9s] model      #3 claude-opus-5-5: Auditor: SPEC vs documents, rule by rule
+[  140.3s] model      Auditor: SPEC vs documents, rule by rule: 14 chars in 27 s
+[  140.3s] spec       extracted: 0 validation repair(s), 0 auditor finding(s), auditor repair not applied -> out\dev-extract-ab.spec.json
+[  140.3s] spec       valid: bank='Freya Bank', identity questions=2, bands=2, situations=8, outcomes=6, max products=3, notes=on, holidays=5
+[  140.4s] generate   36 nodes, 14 tools -> out\dev-extract-ab.workflow.json
+[  140.4s] selftest   lint: pass
+[  142.9s] selftest   code nodes and hooks executed locally on 36 calendar days: pass
+[  142.9s] end        2026-10-10T20:37:12+0300 status=ok (not saved) model_calls=3 seconds=143
