@@ -197,8 +197,9 @@ vars['reason'] = CFG['default_outcome']['reason']
 vars['farewell'] = CFG['farewell']
 vars['cb_feedback'] = ''
 vars['cb_attempts'] = '0'
-vars['cb_day_text'] = 'none'
-vars['cb_time'] = 'none'
+vars['cb_when_text'] = 'none'
+vars['cb_day_found'] = ''
+vars['cb_time_found'] = ''
 vars['all_done'] = 'no'
 vars['n_products'] = '0'
 for i in range(1, int(CFG['maxp']) + 1):
@@ -270,18 +271,22 @@ for i in range(1, int(CFG['maxp']) + 1):
         window = (f"A callback is only possible on these days: {{{{cb_days_text}}}}, between {cb['window_start']} and {cb['window_end']}"
                   + (" (both included)" if cb["inclusive"] else "") + (", and later than now ({{now_hhmm}} today)" if cb["after_now"] else "") + ".")
         task = (f"The person on the line is NOT {self.addr()}. " + " ".join(tp["instructions"]) + " "
-                + (window + " You need an exact day and an exact time. {{cb_feedback}} Do not book anything yourself; the system books it. " if cb["enabled"] else "")
-                + "If the person cannot or will not give any time, call transition_to_" + not_sched + ". Do not call any other tool.")
+                + (window + " You need a day and a time. {{cb_feedback}} "
+                   "There is no booking tool: the system books the callback by itself as soon as the person has given a day and a time that fit. "
+                   "Never say that you booked it and never say that you cannot book it. " if cb["enabled"] else "")
+                + f"The ONLY tool you may call is transition_to_{not_sched}, and only when the person cannot or will not give any time.")
         ex = []
         if cb["enabled"]:
-            ex += [extr("cb_day_text", "The day the person says the customer can be reached, copied exactly as said (for example 'today', 'tomorrow', 'Friday', 'the 15th'). Empty if no day was named in the latest reply."),
-                   extr("cb_time", "The time of day the person says the customer can be reached, as 24-hour HH:MM (3 pm -> 15:00, half past ten -> 10:30). Empty if no exact time was named.", pattern="^[0-2]?[0-9]:[0-5][0-9]$")]
+            # one field for day and time together: a second field that fails to extract must not block the path
+            ex.append(extr("cb_when_text", "When the customer can be reached: the day and the time of day, copied exactly as the person said them "
+                           "(for example 'tomorrow morning around eleven', 'Friday at 3 pm'). Include a day or a time given in an earlier reply "
+                           "if the latest reply gives only the other. Empty if no day and no time were named."))
         if sits:
             ex.append(extr("tp_event", " ".join(f"{x['id']} if {x['trigger']}" for x in sits) + " Otherwise empty.", enum=[x["id"] for x in sits]))
         trans = [tr(self.situation_exit(x, "before_identity"), x["trigger"], eq("tp_event", x["id"])) for x in sits]
         if cb["enabled"]:
-            trans.append(tr("check_callback", "A day and a time were given", {"logic": "or", "conditions": [{"logic": "and", "conditions": [
-                {"variable": "cb_day_text", "operator": "not_equals", "operand": "none"}, {"variable": "cb_time", "operator": "not_equals", "operand": "none"}]}]}))
+            trans.append(tr("check_callback", "A day or a time was given", {"logic": "or", "conditions": [{"logic": "and", "conditions": [
+                {"variable": "cb_when_text", "operator": "is_set"}, {"variable": "cb_when_text", "operator": "not_equals", "operand": "none"}]}]}))
         trans.append(tool_t(not_sched, "The person cannot or will not give any callback time"))
         self.nodes["third_party"] = {"name": "third_party", "node_type": "conversation", "on_enter": {"type": "llm"}, "task_message": task,
                                      "extraction_schema": ex, "max_node_turns": 8, "max_turn_transition": not_sched, "transitions": trans}
@@ -292,49 +297,57 @@ try:
     now = parse_now(vars.get(CFG['now_var'])) or _dt.datetime.now()
     today = now.date()
     cb = CFG['cb']
+    lo = int(cb['window_start'][:2]) * 60 + int(cb['window_start'][3:])
+    hi = int(cb['window_end'][:2]) * 60 + int(cb['window_end'][3:])
     allowed = [today] if cb['include_today'] else []
     d = today
     for _ in range(int(cb['business_days_ahead'])):
         d = next_business_day(d, CFG)
         allowed.append(d)
-    r = resolve_spoken_date(vars.get('cb_day_text'), today, CFG)
-    day = _dt.date.fromisoformat(r['date']) if r['status'] == 'exact' else None
-    mt = _re.match(r'^(\\d{1,2}):(\\d{2})$', str(vars.get('cb_time') or ''))
+    said = str(vars.get('cb_when_text') or '')
+    r = resolve_spoken_date(said, today, CFG)
+    day = r['date'] if r['status'] == 'exact' else str(vars.get('cb_day_found') or '')
+    hhmm = parse_spoken_time(said, lo, hi) or str(vars.get('cb_time_found') or '')
+    vars['cb_day_found'] = day
+    vars['cb_time_found'] = hhmm
     tries = int(str(vars.get('cb_attempts') or '0'))
-    if day is None or mt is None:
+    if not day or not hhmm:
         vars['cb_state'] = 'retry'
-        vars['cb_feedback'] = 'The day or the time was not clear. Ask for an exact day and an exact time.'
+        vars['cb_feedback'] = ('The person gave the time but not the day. Ask on which day.' if hhmm else
+                               'The person gave the day but not the time. Ask at what time.' if day else
+                               'The day and the time were not clear. Ask for a day and a time.')
     else:
-        hh, mm = int(mt.group(1)), int(mt.group(2))
+        dd = _dt.date.fromisoformat(day)
+        hh, mm = int(hhmm[:2]), int(hhmm[3:])
         mins = hh * 60 + mm
-        lo = int(cb['window_start'][:2]) * 60 + int(cb['window_start'][3:])
-        hi = int(cb['window_end'][:2]) * 60 + int(cb['window_end'][3:])
         inside = (lo <= mins <= hi) if cb['inclusive'] else (lo < mins < hi)
-        later = (not cb['after_now']) or _dt.datetime(day.year, day.month, day.day, min(hh, 23), mm) > now
-        if day in allowed and inside and later:
+        later = (not cb['after_now']) or _dt.datetime(dd.year, dd.month, dd.day, hh, mm) > now
+        if dd in allowed and inside and later:
             vars['cb_state'] = 'valid'
-            vars['cb_date_iso'] = day.isoformat()
-            vars['cb_time_norm'] = '%02d:%02d' % (hh, mm)
+            vars['cb_date_iso'] = day
+            vars['cb_time_norm'] = hhmm
         else:
             tries += 1
             vars['cb_attempts'] = str(tries)
+            vars['cb_day_found'] = ''
+            vars['cb_time_found'] = ''
             if tries >= int(cb['max_asks']):
                 vars['cb_state'] = 'fail'
             else:
                 vars['cb_state'] = 'retry'
-                vars['cb_feedback'] = 'That time is NOT possible. Say briefly when a callback is possible and ask once for another time.'
+                vars['cb_feedback'] = 'The time the person offered is NOT possible. Say briefly when a callback is possible and ask once for another time.'
 except Exception:
     vars['cb_state'] = 'retry'
-    vars['cb_feedback'] = 'Ask for an exact day and an exact time.'
-vars['cb_day_text'] = 'none'
-vars['cb_time'] = 'none'
+    vars['cb_feedback'] = 'Ask for a day and a time.'
+vars['cb_when_text'] = 'none'
 """
         self.nodes["check_callback"] = self.code("check_callback", body, [
             tr("schedule_cb", "valid", eq("cb_state", "valid")), tr(not_sched, "out of window again", eq("cb_state", "fail")), tr("third_party", "ask again")])
-        f = self.tf["schedule_callback"]
+        f, ok = self.tf["schedule_callback"], self.s["identity"]["result_fields"]["ok"]
         self.nodes["schedule_cb"] = api_node("schedule_cb", self.api_fn("schedule_callback", {
             f["date"]: {"type": "string", "default": "{{cb_date_iso}}"}, f["time"]: {"type": "string", "default": "{{cb_time_norm}}"}}, [f["date"], f["time"]]),
-            [tr(scheduled, "booked", truthy("schedule_callback_response.data." + self.s["identity"]["result_fields"]["ok"])), tr(not_sched, "the booking did not work")])
+            [tr(scheduled, "booked", truthy("cb_booked", "schedule_cb_response.data." + ok, "schedule_callback_response.data." + ok)), tr(not_sched, "the booking did not work")],
+            mapping=[{"path": "data." + ok, "variable": "cb_booked"}])
 
     def identity(self):
         idn, rf = self.s["identity"], self.s["identity"]["result_fields"]
@@ -516,6 +529,17 @@ try:
             after = [n for (dd, n, name) in dls if dd and d > dd]
             if after:
                 tag += ' (after the deadline of product ' + ' and '.join(after) + ': not allowed for it)'
+            # what to do if the customer names this day, decided here by the SPEC rules, not by the model
+            todo = []
+            for (dd, n, name) in dls:
+                v = check_promise_date(d, today, dd, CFG)
+                if v['verdict'] == 'offer':
+                    od = _dt.date.fromisoformat(v['date'])
+                    todo.append(('product ' + n + ': ' if len(dls) > 1 else '') + 'offer ' + spoken(od) + ' (' + od.isoformat() + ') instead')
+                elif v['verdict'] != 'ok':
+                    todo.append(('product ' + n + ': ' if len(dls) > 1 else '') + 'not possible')
+            if todo:
+                tag += ' -> IF THE CUSTOMER NAMES THIS DAY: ' + '; '.join(todo)
             lines.append(str(d.day) + ' ' + MONTHS[d.month - 1].capitalize() + ' is a ' + WEEKDAYS[d.weekday()].upper() + ' (' + d.isoformat() + '): ' + tag)
         monday = today - _dt.timedelta(days=today.weekday())
         w1 = ', '.join(spoken(monday + _dt.timedelta(days=j)) for j in range(7))
@@ -563,7 +587,8 @@ except Exception:
                + ("if they still give none, propose the deadline. " if dt_["vague"]["then"] == "propose_deadline" else "if they still give none, that is a flat refusal. "))
             + ("A weekday said with the word next means that weekday in the NEXT calendar week. " if relw["next"] == "following_week" else "A weekday said with the word next means the first such weekday after today. ")
             + ("A weekday said with the word this means the one in THIS calendar week. " if relw["this"] == "current_week" else "")
-            + "For every date the customer names, find its line in the calendar and copy the day name and the business-day status from that line. Never guess a weekday.\n"
+            + "For every date the customer names, find its line in the calendar and copy the day name and the business-day status from that line. Never guess a weekday. "
+            + "When a calendar line says IF THE CUSTOMER NAMES THIS DAY, do exactly what it says: it already applies these rules.\n"
             + ("C. A date or an amount the customer proposes is never a refusal; handle it with A and B.\n" if neg["proposal_never_refusal"] else "")
             + f"D. {neg['flat_refusal_definition']} A flat refusal uses ONE persuasion attempt of that product; follow the product's attempts from the FACTS in order. "
             + "When a product's attempts are used up, stop: never repeat a refused offer. "
@@ -586,17 +611,15 @@ except Exception:
             if x["say"]:
                 line += (f"Say: '{x['say']}' " if x["say_exact"] else x["say"] + " ")
             if x.get("offer"):
-                line += f"{x['offer']['question']} If they accept, call transition_to_{self.situation_exit(x, effect=x['offer']['on_accept'], branch='accept')}. "
-                line += ("If they decline, every product without an agreed promise ends with the note " + next((a["note_reason"] for a in x["offer"]["on_decline"]["actions"] if a["type"] == "note"), "") + ". "
-                         if self.notes and any(a["type"] == "note" for a in x["offer"]["on_decline"]["actions"])
-                         else f"If they decline, call transition_to_{self.situation_exit(x, effect=x['offer']['on_decline'], branch='decline')}. ")
+                # the offer is made once by its own node; the model here only hands over
+                line = f"- {x['trigger']} {x['not_this']}".strip() + f" Call transition_to_{self.offer_node(x)} at once, without saying anything else first. "
             elif x in note_sits:
                 line += "Take no promise for that product; it ends with its note and you continue with the other products. "
             else:
                 if x["threshold"] > 1 and x["first_response"]:
                     line += f"The first time: {x['first_response']} If it happens {x['threshold']} times, "
                 line += f"call transition_to_{self.situation_exit(x)}. "
-            if x["suppresses_persuasion"] and x.get("proposal_still_handled"):
+            if x["suppresses_persuasion"] and x.get("proposal_still_handled") and not x.get("offer"):
                 line += "Make no persuasion attempt, but if the customer still names a date or an amount themselves, handle it with A and B. "
             others.append(line)
         free = [r["text"] for r in s["free_rules"] if set(r["applies_to"]) & {"negotiation", "confirmation", "all"}]
@@ -623,9 +646,7 @@ except Exception:
                 trans.append(tool_t("finalize", "Every product now has either a recorded promise or a saved note"))
             for x in exit_sits:
                 if x.get("offer"):
-                    trans.append(tool_t(self.situation_exit(x, effect=x["offer"]["on_accept"], branch="accept"), x["trigger"] + " and the customer ACCEPTED: " + x["offer"]["question"]))
-                    if not (self.notes and any(a["type"] == "note" for a in x["offer"]["on_decline"]["actions"])):
-                        trans.append(tool_t(self.situation_exit(x, effect=x["offer"]["on_decline"], branch="decline"), x["trigger"] + " and the customer DECLINED: " + x["offer"]["question"]))
+                    trans.append(tool_t(self.offer_node(x), x["trigger"]))
                 else:
                     trans.append(tool_t(self.situation_exit(x), self.sit_trigger(x)))
             if exhausted_exit:
@@ -635,6 +656,54 @@ except Exception:
                                             "task_message": task, "tools": tools, "max_node_turns": 60,
                                             "max_turn_transition": "finalize" if self.notes else exhausted_exit, "transitions": trans}
         self.finalize()
+
+    def offer_node(self, x):
+        """A situation with an offer (e.g. a transfer the customer may accept): one node makes the offer once,
+        an enum reads the answer, routing is deterministic. The model cannot repeat the offer later."""
+        name = f"offer_{x['id']}"
+        if name in self.nodes:
+            return name
+        o = x["offer"]
+        accept = self.situation_exit(x, effect=o["on_accept"], branch="accept")
+        decline_note = next((a["note_reason"] for a in o["on_decline"]["actions"] if a["type"] == "note"), None)
+        decline = self.notes_chain(decline_note) if (self.notes and decline_note) else self.situation_exit(x, effect=o["on_decline"], branch="decline")
+        values = ["accept", "decline"] + (["proposal"] if x.get("proposal_still_handled") else [])
+        desc = ("The customer's answer to this offer: " + o["question"] + " accept = they clearly want it. decline = they say no or do not want it."
+                + (" proposal = instead they name a payment date or an amount themselves." if "proposal" in values else "") + " Empty if unclear.")
+        task = (f"The customer just said something that means: {x['trigger']} "
+                + (f"Say: '{x['say']}' " if x["say_exact"] and x["say"] else (x["say"] + " " if x["say"] else ""))
+                + f"Then, in the same turn: {o['question']} Make this offer ONCE only and never repeat it. "
+                + ("Make no persuasion attempt and do not ask for any payment. " if x["suppresses_persuasion"] else "")
+                + "If the customer asks a question, answer it in one sentence without repeating the offer. Do not call any tool.")
+        trans = [tr(accept, "The customer accepted the offer", eq("offer_reply", "accept")),
+                 tr(decline, "The customer declined the offer", eq("offer_reply", "decline"))]
+        if "proposal" in values:
+            trans += [tr(f"negotiate_{k}", "The customer named a date or an amount", {"logic": "or", "conditions": [{"logic": "and", "conditions": [
+                {"variable": "offer_reply", "operator": "equals", "operand": "proposal"}, {"variable": "n_products", "operator": "equals", "operand": str(k)}]}]})
+                      for k in range(1, self.maxp + 1)]
+        self.nodes[name] = {"name": name, "node_type": "conversation", "on_enter": {"type": "llm"}, "on_enter_first_entry_only": True,
+                            "task_message": task, "extraction_schema": [extr("offer_reply", desc, enum=values)],
+                            "max_node_turns": 2, "max_turn_transition": decline, "transitions": trans}
+        return name
+
+    def notes_chain(self, reason):
+        """Engine-run notes: one add_note per product that has no recorded promise, reason baked, then finalize.
+        No model decides whether or how to note."""
+        entry = f"note_all_{reason}_1"
+        if entry in self.nodes:
+            return entry
+        f = self.tf["add_note"]
+        for i in range(1, self.maxp + 1):
+            gate, note = f"note_all_{reason}_{i}", f"note_all_{reason}_{i}_call"
+            nxt = f"note_all_{reason}_{i + 1}" if i < self.maxp else "finalize"
+            body = (f"try:\n    n = int(str(vars.get('n_products') or '0'))\n    go = {i} <= n and str(vars.get('res_{i}')) not in ('promise', 'note')\n"
+                    f"    vars['note_go'] = 'yes' if go else 'no'\n    if go:\n        vars['res_{i}'] = 'note'\n        vars['note{i}_saved'] = CFG['r']\n"
+                    f"except Exception:\n    vars['note_go'] = 'no'\n")
+            self.nodes[gate] = code_node(gate, codegen.embed({"r": reason}, body, snippets=()), [tr(note, "this product needs a note", eq("note_go", "yes")), tr(nxt, "always")])
+            self.nodes[note] = api_node(note, self.api_fn("add_note", {f["product_id"]: {"type": "string", "default": "{{p%d_id}}" % i},
+                                                                       f["reason"]: {"type": "string", "default": reason}}, [f["reason"]]),
+                                        [tr(nxt, "always")])
+        return entry
 
     def done_check(self):
         return """

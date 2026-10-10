@@ -101,6 +101,13 @@ for bad in [None, 123, "2026-13-45", "the 31st of February", "next blursday", "ð
 check("parse_now with seconds and zone", D.parse_now("2026-10-14T11:00:00Z"), dt.datetime(2026, 10, 14, 11, 0))
 check("parse_now garbage", D.parse_now("soon"), None)
 
+# 7b. Times of day, with a 10:00-19:00 window (minutes 600-1140) for hours said without am/pm
+for said, want in [("tomorrow morning around eleven", "11:00"), ("around eleven", "11:00"), ("at 3", "15:00"), ("at three", "15:00"),
+                   ("3 pm", "15:00"), ("10am", "10:00"), ("half past ten", "10:30"), ("quarter past two", "14:15"), ("quarter to six", "17:45"),
+                   ("15:30", "15:30"), ("at eleven thirty", "11:30"), ("six o'clock", "18:00"), ("noon", "12:00"), ("in the evening at seven", "19:00"),
+                   ("eleven", "11:00"), ("on the 15th at eleven", "11:00"), ("sometime in the afternoon", ""), ("tomorrow", ""), ("", ""), (None, "")]:
+    check(f"time {said!r}", D.parse_spoken_time(said, 600, 1140), want)
+
 # 8. The embedded code node: no double braces, runs with a `vars` dict like the sandbox gives it
 body = "try:\n    t = parse_now(vars.get('now')).date()\n    vars['answer'] = resolve_spoken_date(vars.get('said'), t, CFG)['date']\nexcept Exception:\n    vars['answer'] = ''\n"
 src = codegen.embed(A, body)

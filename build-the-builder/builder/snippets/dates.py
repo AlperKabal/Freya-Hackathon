@@ -267,6 +267,68 @@ def _is_vague(t, cfg):
     return any(str(e).lower() in t for e in cfg.get("vague_examples", []))
 
 
+# ---------- times of day ----------
+
+_HOURWORDS = dict(list(_UNITS.items())[1:13])          # one .. twelve
+
+
+def _hour_of(token):
+    t = str(token).lower()
+    if t.isdigit():
+        return int(t)
+    return _HOURWORDS.get(t)
+
+
+def parse_spoken_time(text, lo=None, hi=None):
+    """'around eleven' -> '11:00', 'half past ten' -> '10:30', '3 pm' -> '15:00', '15:30' -> '15:30'.
+    Without am/pm, an hour that fits the window [lo, hi] (minutes since midnight) is preferred. '' if no time."""
+    t = " " + _re.sub(r"[^a-z0-9: ]", " ", str(text or "").lower().replace("a.m.", "am").replace("p.m.", "pm")) + " "
+    t = _re.sub(r"\s+", " ", t)
+    hw = r"(\d{1,2}|" + "|".join(sorted(_HOURWORDS, key=len, reverse=True)) + r")"
+    h, m, half = None, 0, ""
+    mt = _re.search(r"\b(\d{1,2}):(\d{2})\b", t)
+    if mt:
+        h, m = int(mt.group(1)), int(mt.group(2))
+        half = "24h" if h > 12 or h == 0 else ""
+    if h is None and _re.search(r"\b(noon|midday)\b", t):
+        h, half = 12, "24h"
+    if h is None:
+        mt = _re.search(r"\bhalf past " + hw + r"\b", t) or None
+        if mt: h, m = _hour_of(mt.group(1)), 30
+    if h is None:
+        mt = _re.search(r"\bquarter (past|to) " + hw + r"\b", t)
+        if mt:
+            h = _hour_of(mt.group(2))
+            h, m = (h, 15) if mt.group(1) == "past" else ((h - 1) or 12, 45)
+    if h is None:
+        mt = _re.search(r"\b" + hw + r" ?(am|pm)\b", t) or _re.search(r"\b" + hw + r" o ?clock\b", t) \
+             or _re.search(r"\b(?:at|around|about|by|after|before|from) " + hw + r"(?: (thirty|fifteen|forty five))?\b", t) \
+             or _re.search(r"^ " + hw + r"(?: (thirty|fifteen|forty five))? $", t)
+        if mt:
+            h = _hour_of(mt.group(1))
+            extra = mt.group(2) if mt.lastindex and mt.lastindex >= 2 else None
+            if extra in ("am", "pm"):
+                half = extra
+            elif extra:
+                m = {"thirty": 30, "fifteen": 15, "forty five": 45}[extra]
+    if h is None or not 0 <= h <= 23 or not 0 <= m <= 59:
+        return ""
+    if not half:
+        if _re.search(r"\b(am|morning)\b", t): half = "am"
+        elif _re.search(r"\b(pm|afternoon|evening|tonight)\b", t): half = "pm"
+    if half == "am":
+        h = 0 if h == 12 else h
+    elif half == "pm":
+        h = h if h == 12 else h + 12
+    elif half != "24h" and h <= 12:
+        options = [h % 12, h % 12 + 12]
+        inside = [x for x in options if lo is not None and hi is not None and lo <= x * 60 + m <= hi]
+        h = inside[0] if len(inside) == 1 else (h if 7 <= h <= 12 else h + 12)
+    if not 0 <= h <= 23:
+        return ""
+    return "%02d:%02d" % (h, m)
+
+
 # ---------- checking a proposed promise date ----------
 
 def check_promise_date(day, today, deadline, cfg):

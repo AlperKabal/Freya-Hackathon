@@ -152,3 +152,23 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
   Not tested: nulls in other fields. Rule for us stays: emit no nulls.
 - The base agent's `close_call` bakes `{{outcome}}`/`{{reason}}`, but nothing in the workflow ever sets those
   variables, so the end-of-call model guesses them. Confirm in a transcript of the baseline run.
+
+### v1 first run (Brief A) and fixes
+
+| Time (UTC) | Workflow / version | Brief | Style | Reps | Score | Failed cases | Cause |
+|---|---|---|---|---|---|---|---|
+| 2026-10-10 16:5x | `yasar-brief-a` v1 | A | none | 1 | **7/10** | PUB-02, PUB-05, PUB-07 | see below; median slowest turn 5 s |
+
+- PUB-02: day and time were two extraction fields behind an AND condition; the time was extracted, the day failed,
+  so the callback check never ran. The model then called an invented sibling tool (`transition_to_set_callback_scheduled`)
+  and told the person it could not book. Also: a code-node write that violates a field's `validation_pattern` is
+  rejected (`setup_response.validation_errors`). Fix: one field `cb_when_text`, day AND time parsed in code
+  (`parse_spoken_time` added to the date snippet), partial answers remembered, prompt says there is no booking tool.
+- PUB-05: the support transfer was offered twice; the offer count lived in the model's memory. Fix: an offer node per
+  situation with an offer, made once, answer read as an enum (accept / decline / proposal), deterministic routing;
+  in multi-product briefs the decline path writes notes through an engine-run chain (`notes_chain`).
+- PUB-07: "Monday the 26th" (a holiday) was answered with the deadline instead of the next business day; the model
+  misapplied rule B. Fix: every calendar line carries the code-computed answer ("IF THE CUSTOMER NAMES THIS DAY:
+  offer ..."), per product, from `check_promise_date`.
+- All three fixes use only mechanisms already seen working (on_enter llm on entry, tool-call transitions, enum +
+  equals). None depends on the unverified loop assumptions X1-X3.
