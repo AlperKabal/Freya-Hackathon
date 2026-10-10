@@ -42,9 +42,11 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
 - The kit lives in `build-the-builder/`. All kit commands run from that folder (`freya.py` is imported from cwd).
 - On this Windows machine `python3` is not available (Store alias); use `python` (3.14.6).
 - `anthropic` and `claude_agent_sdk` are not installed yet.
-- `.claude/skills/build-phone-agent/SKILL.md` is referenced by the README and by `examples/agent_builder.py`, but is
-  **missing from the repository** (it was probably dropped because `.claude/` is a hidden folder). The example
-  builder cannot run as shipped until we get the skill from the organisers' kit.
+- `.claude/skills/build-phone-agent/SKILL.md` was **missing from the repository** (dropped because `.claude/` is a
+  hidden folder). **Restored** from the organisers' `build-the-builder-v3.zip`; every other file in the zip is
+  identical to the repo (line endings ignored). The skill saves under slot `<brief file name>` (e.g. `brief-a`),
+  calls `python3`, and tests with `run_cases.py --brief A` up to 4 times, i.e. it relies on the practice cases
+  (the self-test trap of DEV_AGENT_PROMPT section 8).
 - There are two `public-test-set.json` files. The root one is older and has no `identity` block. `run_cases.py`
   reads `build-the-builder/public-test-set.json` (it resolves `ROOT` from its own location), which is the right one.
 - `run_cases.py` opens a practice session per case at the mock (`/v1/practice/sessions` with `{"case": id}`); the
