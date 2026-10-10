@@ -186,3 +186,22 @@ agent's output; and an auditor without a checklist tends to approve.
 
 - Tooling lesson: writing Python source from a Python heredoc turned `\b` into a backspace character, so a regex
   silently never matched. Check generated regexes with a positive and a negative example.
+
+### Platform findings from experiments (2026-10-10 evening)
+
+- **Chat route skips the initial code node** (X9, `results/exp-loop.txt`): `setup_ran` never set, the TTS used the
+  `test_variables` fallback.
+- **Chat route fails when a call enters a code node mid-call**: both experiments returned 503 / 504 at the first
+  conversation -> code transition. Simulations run code nodes fine. Consequence: experiments run as simulations
+  (`dev/exp_sim.py`); a chat smoke test can only cover paths without code nodes.
+- **Same-turn reply after a code-node hop works** (`results/exp-hop.txt`, simulation): user answer -> extraction ->
+  code node writes a note -> back to the same conversation node -> the reply in that turn uses the new note.
+- **The extractor re-reads old values from the history**: after code cleared `colour`, a turn without a colour still
+  produced a value and hopped. Rule: code decides what is new (it remembers the last value it consumed).
+- PUB-07 failed the same way in three runs (hand SPEC x2, extracted SPEC x1): systematic, not noise. Fix: a
+  `date_check` hop after every turn that names a day; code resolves it against `now`, applies the SPEC date rules
+  per product, and writes `date_note`, shown first in the negotiation prompt.
+
+| Time (UTC) | Workflow / version | Brief | Style | Reps | Score | Failed cases | Cause |
+|---|---|---|---|---|---|---|---|
+| 2026-10-10 17:5x | `yasar-extract-a` v1 (SPEC extracted by the builder, no hand input) | A | none | 1 | **9/10** | PUB-07 | systematic date-rule error, see above; median slowest turn 2 s |

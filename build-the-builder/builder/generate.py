@@ -210,6 +210,9 @@ for i in range(1, int(CFG['maxp']) + 1):
     vars['res_' + str(i)] = 'none'
     vars['cp' + str(i) + '_fail'] = '0'
     vars['note' + str(i) + '_saved'] = ''
+    vars['p' + str(i) + '_deadline'] = ''
+vars['date_note'] = 'No payment day has been named yet.'
+vars['day_checked'] = ''
 """
         self.nodes["setup"] = self.code("setup", body, [tr("opening", "always")])
 
@@ -508,6 +511,7 @@ try:
                     steps.append('Attempt ' + str(st['attempt']) + ': ' + what + ' on ' + spoken(d) + ' (' + d.isoformat() + ')')
             vars['p' + n + '_id'] = str(p.get(pf['id']))
             vars['p' + n + '_words'] = name
+            vars['p' + n + '_deadline'] = deadline.isoformat() if deadline else ''
             dls.append((deadline, n, name))
             facts.append('PRODUCT ' + n + ': ' + name + '. Full past-due amount: ' + _money(full) + '. Days late: ' + str(days)
                          + ('. Band: ' + band['name'] if band else '. No band matches') + '. Minimum acceptable amount (say: the ' + floor_name + '): ' + _money(floor)
@@ -630,7 +634,8 @@ except Exception:
         for k in range(1, self.maxp + 1):
             plist = ", ".join(f"product {i} ({{{{p{i}_words}}}}: create_promise_{i}" + (f", add_note_{i}" if self.notes else "") + ")" for i in range(1, k + 1))
             many = k > 1
-            task = ("You are on the collections part of the call. The customer is verified. Today is {{today_spoken}} ({{today_iso}}). "
+            task = ("SYSTEM DATE CHECK (computed from the rules; when it names a date to offer, offer exactly that date now): {{date_note}}\n"
+                    "You are on the collections part of the call. The customer is verified. Today is {{today_spoken}} ({{today_iso}}). "
                     "Your opening line already stated every late product and asked whether the customer can pay " + ("all of them" if many else "it") + " today. Never ask about today again. "
                     f"Products, in this order: {plist}. Each product has its OWN tools; use only the tools of the product you mean. One tool call per message.\n"
                     "FACTS:\n{{deal_facts}}\nCALENDAR (the only source for dates; never work out dates yourself):\n{{calendar_text}}\n\n"
@@ -642,7 +647,9 @@ except Exception:
                     + ("\n" + "\n".join("- " + t for t in free) if free else "")
                     + "\n- When every product has a recorded promise" + (" or a saved note" if self.notes else "") + ", the system ends the call; do not say goodbye yourself.")
             tools = [self.cp_tool(i, fail_exit) for i in range(1, k + 1)] + ([self.note_tool(i) for i in range(1, k + 1)] if self.notes else [])
-            trans = [tr("finalize", "Every product is done", eq("all_done", "yes"))]
+            trans = [tr("finalize", "Every product is done", eq("all_done", "yes")),
+                     tr("date_check", "The customer named a payment day", {"logic": "or", "conditions": [{"logic": "and", "conditions": [
+                         {"variable": "named_day_text", "operator": "is_set"}, {"variable": "named_day_text", "operator": "not_equals", "operand": ""}]}]})]
             if fail_exit:
                 trans.append(tr(fail_exit, "A promise failed the last time", {"logic": "or", "conditions": [
                     {"variable": f"cp{i}_fail", "operator": "greater_than", "operand": rec["max_attempts"] - 1} for i in range(1, k + 1)]}))
@@ -658,8 +665,47 @@ except Exception:
             self.nodes[f"negotiate_{k}"] = {"name": f"negotiate_{k}", "node_type": "conversation",
                                             "on_enter": {"type": "tts", "text": "{{deal_intro}}"}, "on_enter_first_entry_only": True,
                                             "task_message": task, "tools": tools, "max_node_turns": 60,
+                                            "extraction_schema": [extr("named_day_text", "The payment day the customer names in their LATEST message, copied exactly as said (for example 'Monday the twenty-sixth', 'next Friday', 'the week after next'). Empty if the latest message names no day.")],
                                             "max_turn_transition": "finalize" if self.notes else exhausted_exit, "transitions": trans}
+        self.date_check()
         self.finalize()
+
+    def date_check(self):
+        """After every customer turn that names a day: code resolves it against `now` and applies the SPEC's date
+        rules per product. The extractor may re-read an old day from the history, so code decides what is new."""
+        body = """
+try:
+    said = str(vars.get('named_day_text') or '').strip()
+    vars['named_day_text'] = ''
+    now = parse_now(vars.get(CFG['now_var'])) or _dt.datetime.now()
+    today = now.date()
+    r = resolve_spoken_date(said, today, CFG)
+    key = r['status'] + ':' + r['date']
+    if said and key != str(vars.get('day_checked') or ''):
+        vars['day_checked'] = key
+        n = int(str(vars.get('n_products') or '1'))
+        if r['status'] == 'exact':
+            d = _dt.date.fromisoformat(r['date'])
+            parts = []
+            for i in range(1, n + 1):
+                dl = str(vars.get('p' + str(i) + '_deadline') or '')
+                v = check_promise_date(d, today, _dt.date.fromisoformat(dl) if dl else None, CFG)
+                who = ('for the ' + str(vars.get('p' + str(i) + '_words') or ('product ' + str(i))) + ': ') if n > 1 else ''
+                if v['verdict'] == 'ok':
+                    parts.append(who + 'this day is allowed')
+                elif v['verdict'] == 'offer':
+                    od = _dt.date.fromisoformat(v['date'])
+                    parts.append(who + 'this day is not allowed (' + v['why'] + '); offer ' + spoken(od) + ' (' + od.isoformat() + ') instead')
+                else:
+                    parts.append(who + 'this day is not possible (' + v['why'] + ')')
+            vars['date_note'] = 'The customer named ' + spoken(d) + ' (' + d.isoformat() + '). ' + '. '.join(p[0].upper() + p[1:] for p in parts) + '.'
+        elif r['status'] == 'vague':
+            vars['date_note'] = 'The customer named a vague period, not a day. Apply the rule for vague periods.'
+except Exception:
+    vars['named_day_text'] = ''
+"""
+        trans = [tr(f"negotiate_{k}", f"back to the {k}-item negotiation", eq("n_products", str(k))) for k in range(self.maxp, 0, -1)]
+        self.nodes["date_check"] = self.code("date_check", body, trans + [tr("negotiate_1", "always")])
 
     def offer_node(self, x):
         """A situation with an offer (e.g. a transfer the customer may accept): one node makes the offer once,
