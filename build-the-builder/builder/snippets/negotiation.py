@@ -265,7 +265,9 @@ def _step(state, ev, plan, today, cfg):
                 _agree(x, plan[i]["full"], plan[i]["today"])
             nxt, say = _finish(state, plan, cfg)
             return state, say, nxt
-        if kind == "propose" and day["status"] == "exact" and (not multi or _to_all(ev.get("about"), multi) or not ev.get("about")) and amount is None:
+        # one date for several products (multi-product rule: each on its own deadline if needed, said in the read-back);
+        # a single product goes through the single-product rules (a late date is offered as the deadline first)
+        if multi and kind == "propose" and day["status"] == "exact" and (_to_all(ev.get("about"), multi) or not ev.get("about")) and amount is None:
             return _date_for_all(state, day["date"], plan, today, cfg)
         if multi and kind == "propose":
             state["cursor"] = _which(ev.get("about"), plan, 0)

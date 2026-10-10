@@ -546,7 +546,9 @@ try:
         vars['deal_intro'] = ' '.join([CFG['intro']] + intro + [ask])
         vars['neg_plan'] = json.dumps(plan)
         vars['nst'] = ''
-        vars['say_text'] = ask
+        vars['say_text'] = vars['deal_intro']
+        vars['say_instr'] = ''
+        vars['deal_facts_short'] = ' '.join(pp['name'] + ': ' + _money(pp['full']) + ' past due' + ('; latest promise date ' + spoken_days.get(pp['deadline'], pp['deadline']) if pp['deadline'] else '') + '.' for pp in plan)
         vars['deal_state'] = 'ready'
 except Exception:
     vars['deal_state'] = 'none'
@@ -729,13 +731,13 @@ except Exception:
                  tr(decline, "The customer declined the offer", eq("offer_reply", "decline"))]
         if "proposal" in values:
             if self.mode == "orch":
-                trans.append(tr("negotiate", "The customer named a date or an amount", eq("offer_reply", "proposal")))
+                trans.append(tr("neg_eval", "The customer named a date or an amount", eq("offer_reply", "proposal")))
             else:
                 trans += [tr(f"negotiate_{k}", "The customer named a date or an amount", {"logic": "or", "conditions": [{"logic": "and", "conditions": [
                     {"variable": "offer_reply", "operator": "equals", "operand": "proposal"}, {"variable": "n_products", "operator": "equals", "operand": str(k)}]}]})
                           for k in range(1, self.maxp + 1)]
         self.nodes[name] = {"name": name, "node_type": "conversation", "on_enter": {"type": "llm"}, "on_enter_first_entry_only": True,
-                            "task_message": task, "extraction_schema": [extr("offer_reply", desc, enum=values)],
+                            "task_message": task, "extraction_schema": [extr("offer_reply", desc, enum=values)] + (list(getattr(self, "orch_extraction", [])) if self.mode == "orch" else []),
                             "max_node_turns": 2, "max_turn_transition": decline, "transitions": trans}
         return name
 
@@ -776,105 +778,128 @@ except Exception:
                 "fail_note": s["recording"]["on_final_failure"].get("note_reason", "")}
 
     def negotiate_orch(self):
-        """Extraction understands the turn, the state machine (snippets/negotiation.py) decides, the model speaks."""
+        """Orchestrator v3. Extraction understands the turn (including situations), the state machine decides,
+        TTS says the decided sentence word for word, and the engine records. The model speaks only to answer a
+        question or to give a situation's first response (node negotiate_q)."""
         s, nc = self.s, self.neg_cfg()
         neg_sits = self.stage_situations("negotiation")
-        exit_sits = [x for x in neg_sits if x["id"] not in nc["product_situations"]]
+        call_sits = [x for x in neg_sits if x["id"] not in nc["product_situations"]]
         kinds = {"accept": "the customer agrees to what was just asked or proposed (yes, fine, that works, I confirm)",
                  "refuse": "a flat no: " + s["negotiation"]["flat_refusal_definition"],
                  "too_much": "the customer says the amount is too much or more than they can afford, without naming another amount",
                  "propose": "the customer names a payment day or an amount of their own",
                  "vague": "the customer names only a vague period, not a day" + (f" (for example: {'; '.join(s['dates']['vague']['examples'])})" if s["dates"]["vague"]["examples"] else ""),
-                 "question": "the customer asks a question instead of answering",
-                 "unclear": "anything else, or the latest message is no answer to the agent's last question"}
-        for sid in nc["product_situations"]:
-            x = next(y for y in neg_sits if y["id"] == sid)
-            kinds[sid] = f"{x['trigger']} {x['not_this']}".strip()
-        ex = [extr("reply_kind", "What the customer's LATEST message does, judged only from that message. " + " ".join(f"{k} = {v}." for k, v in kinds.items()), enum=list(kinds)),
-              extr("day_text", "The payment day the customer names in the LATEST message, copied exactly as said ('tomorrow', 'next Friday', 'the 26th'). Empty if none."),
-              extr("amount_text", "The amount the customer names in the LATEST message, copied exactly as said ('two hundred', '150'). Empty if none."),
-              extr("about_text", "Which product the LATEST message is about, copied as said ('the car loan', 'all of them'). Empty if not said.")]
-        others = []
-        for x in exit_sits:
-            line = f"- {x['trigger']} {x['not_this']}".strip() + " "
-            if x.get("offer"):
-                line += f"Call transition_to_{self.offer_node(x)} at once, without saying anything else first. "
-            else:
-                if x["guidance"]:
-                    line += x["guidance"] + " "
-                if x["threshold"] > 1 and x["first_response"]:
-                    line += f"The first time: {x['first_response']} If it happens {x['threshold']} times, "
-                line += f"call transition_to_{self.situation_exit(x)}. "
-            others.append(line)
+                 "question": "the customer asks a question instead of answering"}
+        for x in neg_sits:
+            kinds[x["id"]] = f"{x['trigger']} {x['not_this']}".strip()
+        kinds["unclear"] = "anything else, or the latest message is no answer to the agent's last question"
+        self.orch_extraction = [
+            extr("reply_kind", "What the customer's LATEST message does, judged only from that message. When a special situation applies, choose it over the others. "
+                 + " ".join(f"{k} = {v}." for k, v in kinds.items()), enum=list(kinds)),
+            extr("day_text", "The payment day the customer names in the LATEST message, copied exactly as said ('tomorrow', 'next Friday', 'the 26th'). Empty if none."),
+            extr("amount_text", "The amount the customer names in the LATEST message, copied exactly as said ('two hundred', '150'). Empty if none."),
+            extr("about_text", "Which product the LATEST message is about, copied as said ('the car loan', 'all of them'). Empty if not said.")]
+        # situation exits, chosen by code from the extracted kind
+        sit_cfg, sit_trans = {}, []
+        for x in call_sits:
+            target = self.offer_node(x) if x.get("offer") else self.situation_exit(x)
+            sit_cfg[x["id"]] = {"threshold": int(x["threshold"]), "first": x["first_response"]}
+            sit_trans.append(tr(target, x["trigger"], eq("neg_next", "sit_" + x["id"])))
+        turn_nodes = ["negotiate", "negotiate_q"] + [f"offer_{x['id']}" for x in call_sits if x.get("offer")]
+        account = "{{deal_facts_short}}"
         free = [r["text"] for r in s["free_rules"] if set(r["applies_to"]) & {"negotiation", "confirmation", "all"}]
-        task = ("SAY NOW: {{say_text}}\n\n"
-                "You are on the collections part of the call; the customer is verified. Today is {{today_spoken}}.\n"
-                "Say the SAY NOW text to the customer word for word. If it starts with ASK_FIRST:, first answer the customer's question in one short sentence "
-                "using only facts you were given, then say the rest without the ASK_FIRST: label. "
-                "The system chooses every offer, checks every date and records the promises: never make an offer of your own, never ask how much they can pay, "
-                "never say anything is recorded, and do not call a tool unless a rule below says so.\n"
-                "FACTS (for answering questions only):\n{{deal_facts}}\n\nSITUATIONS\n" + "\n".join(others)
-                + ("\n" + "\n".join("- " + t for t in free) if free else ""))
-        trans = [tr("neg_eval", "every customer turn goes to the negotiation logic")]
-        trans += [tool_t(self.offer_node(x) if x.get("offer") else self.situation_exit(x), self.sit_trigger(x)) for x in exit_sits]
-        exhausted = s["negotiation"]["attempts_exhausted"]
-        self.nodes["negotiate"] = {"name": "negotiate", "node_type": "conversation", "on_enter": {"type": "tts", "text": "{{deal_intro}}"},
-                                   "on_enter_first_entry_only": True, "task_message": task, "extraction_schema": ex, "max_node_turns": 60,
-                                   "max_turn_transition": "neg_close", "transitions": trans}
+        common = {"extraction_schema": self.orch_extraction, "max_node_turns": 60, "max_turn_transition": "neg_close",
+                  "transitions": [tr("neg_eval", "every customer turn goes to the negotiation logic")]}
+        self.nodes["negotiate"] = dict({"name": "negotiate", "node_type": "conversation", "on_enter": {"type": "tts", "text": "{{say_text}}"},
+                                        "task_message": "Say nothing of your own. Do not call a tool."}, **common)
+        self.nodes["negotiate_q"] = dict({"name": "negotiate_q", "node_type": "conversation", "on_enter": {"type": "llm"},
+                                          "task_message": ("You are on the collections part of the call; the customer is verified. Today is {{today_spoken}}.\n"
+                                                           "Do this now, in one or two short sentences: {{say_instr}} Then say this, word for word: {{say_text}}\n"
+                                                           "Use only these facts; never make an offer of your own, never ask how much they can pay, never say anything is recorded, do not call a tool.\n"
+                                                           "ACCOUNT: " + account + ("\nRULES:\n" + "\n".join("- " + t for t in free) if free else ""))}, **common)
         body = """
 try:
     plan = json.loads(vars.get('neg_plan') or '[]')
     raw = vars.get('nst')
     st = json.loads(raw) if raw else new_state(plan)
-    turn = str(vars.get('negotiate.total_turns') or '')
+    st.setdefault('sit', dict())
+    turn = str(sum(int(float(str(vars.get(n + '.total_turns') or 0))) for n in CFG['turn_nodes']))
     now = parse_now(vars.get(CFG['now_var'])) or _dt.datetime.now()
-    ev = dict(kind=vars.get('reply_kind'), day=vars.get('day_text'), amount=vars.get('amount_text'), about=vars.get('about_text'))
-    if turn and turn == str(vars.get('neg_turn_done') or ''):
-        nxt, say = 'talk', str(vars.get('say_text') or '')
-    else:
-        st, say, nxt = step(st, ev, plan, now.date(), CFG)
+    kind = str(vars.get('reply_kind') or 'unclear')
+    ev = dict(kind=kind, day=vars.get('day_text'), amount=vars.get('amount_text'), about=vars.get('about_text'))
+    nxt, say, instr = 'talk', str(vars.get('say_text') or ''), ''
+    if turn != str(vars.get('neg_turn_done') or ''):
+        if kind in CFG['call_situations']:
+            c = int(st['sit'].get(kind, 0)) + 1
+            st['sit'][kind] = c
+            sc = CFG['call_situations'][kind]
+            if c < sc['threshold'] and sc['first']:
+                nxt, instr = 'ask', sc['first']
+            else:
+                nxt = 'sit_' + kind
+        else:
+            st, say2, nxt = step(st, ev, plan, now.date(), CFG)
+            say = say2 or say
+            if say.startswith('ASK_FIRST: '):
+                say, nxt, instr = say[len('ASK_FIRST: '):], 'ask', 'Answer the customer question in one short sentence, using only the facts given.'
     vars['neg_turn_done'] = turn
     vars['nst'] = json.dumps(st)
-    for k in ('day_text', 'amount_text', 'about_text'):                # reply_kind is an enum: '' would be rejected
+    for k in ('day_text', 'amount_text', 'about_text'):
         vars[k] = ''
-    vars['say_text'] = say or str(vars.get('say_text') or '')
+    vars['say_text'] = say
+    vars['say_instr'] = instr
     vars['neg_next'] = nxt
-    instr = []
     for i, x in enumerate(st['p']):
         n = str(i + 1)
         if x['status'] == 'agreed' and nxt == 'record':
             vars['res_' + n] = 'pending'
             vars['p' + n + '_amt'] = '%.2f' % float(x['amt'])
             vars['p' + n + '_date'] = x['date']
-            instr.append('Call create_promise_' + n + ' with amount ' + ('%.2f' % float(x['amt'])) + ' and date ' + x['date'] + '.')
         elif x['status'] == 'ended':
             vars['res_' + n] = 'open'
             vars['p' + n + '_note_reason'] = x['note']
-    vars['record_instr'] = ' '.join(instr)
 except Exception:
     vars['neg_next'] = 'talk'
 """
-        self.nodes["neg_eval"] = code_node("neg_eval", codegen.embed(self.cfg(**nc), body, snippets=("dates", "negotiation")),
-                                           [tr("record", "the customer confirmed the read-back", eq("neg_next", "record")),
-                                            tr("neg_close", "nothing was agreed", eq("neg_next", "close")),
-                                            tr("negotiate", "say the next sentence")])
-        rec = s["recording"]
-        tools = [self.cp_tool(i, None) for i in range(1, self.maxp + 1)]
-        pending_done = {"logic": "or", "conditions": [{"logic": "and", "conditions": [{"variable": f"res_{i}", "operator": "not_equals", "operand": "pending"} for i in range(1, self.maxp + 1)]}]}
+        cfg = self.cfg(**nc, call_situations=sit_cfg, turn_nodes=turn_nodes)
+        self.nodes["neg_eval"] = code_node("neg_eval", codegen.embed(cfg, body, snippets=("dates", "negotiation")),
+                                           sit_trans + [tr("rec_gate_1", "the customer confirmed the read-back", eq("neg_next", "record")),
+                                                        tr("neg_close", "nothing was agreed", eq("neg_next", "close")),
+                                                        tr("negotiate_q", "answer a question or give a first response", eq("neg_next", "ask")),
+                                                        tr("negotiate", "say the next sentence")])
         after = self.notes_by_product() if self.notes else "finalize"
-        # on_enter llm: a node entered with a silent on_enter does not speak or call a tool in that turn (seen in a run)
-        self.nodes["record"] = {"name": "record", "node_type": "conversation", "on_enter": {"type": "llm"}, "on_enter_first_entry_only": True,
-                                "task_message": ("The customer confirmed. Do this now, one tool call per message: {{record_instr}} "
-                                                 f"Follow the what_to_do_next line of every tool result. If a call fails the first time, say exactly '{rec['retry_say']}' and call the same tool again. "
-                                                 "Never say a promise is recorded before its tool result says so."),
-                                "tools": tools, "max_node_turns": 8, "max_turn_transition": after,
-                                "transitions": [tr(after, "every agreed promise has a result", pending_done)]}
+        self.record_chain(after)
+        exhausted = s["negotiation"]["attempts_exhausted"]
         if self.notes:
             self.nodes["neg_close"] = code_node("neg_close", codegen.embed({}, "vars['neg_closed'] = 'yes'\n", snippets=()), [tr(after, "always")])
         else:
             self.nodes["neg_close"] = code_node("neg_close", codegen.embed({}, "vars['neg_closed'] = 'yes'\n", snippets=()),
                                                 [tr(self.exit("attempts_exhausted", exhausted["outcome"], exhausted["reason"], self.farewell()), "always")])
         self.finalize()
+
+    def record_chain(self, after):
+        """Engine-run promises: per agreed product, create_promise with id, amount and date baked from the state
+        machine (a pre-hook makes the amount a number), retried with the SPEC's sentence, never claimed by a model."""
+        rec, f, ok = self.s["recording"], self.tf["create_promise"], self.s["recording"]["success_field"]
+        tries = max(1, int(rec["max_attempts"]))
+        for i in range(1, self.maxp + 1):
+            gate, nxt = f"rec_gate_{i}", (f"rec_gate_{i + 1}" if i < self.maxp else after)
+            okn, failn = f"rec_ok_{i}", f"rec_fail_{i}"
+            self.nodes[gate] = code_node(gate, codegen.embed({}, f"vars['rec_go'] = 'yes' if str(vars.get('res_{i}')) == 'pending' else 'no'\n", snippets=()),
+                                         [tr(f"rec_{i}_1", "this product was agreed", eq("rec_go", "yes")), tr(nxt, "always")])
+            pre = (f"try:\n    b = config.get('body')\n    if isinstance(b, dict):\n        b[{f['amount']!r}] = round(float(str(vars.get('p{i}_amt'))), 2)\n"
+                   f"        b[{f['date']!r}] = str(vars.get('p{i}_date'))\nexcept Exception:\n    pass\n")
+            for t in range(1, tries + 1):
+                name, var = f"rec_{i}_{t}", f"rec_{i}_{t}_ok"
+                body = {f["product_id"]: {"type": "string", "default": "{{p%d_id}}" % i},
+                        f["amount"]: {"type": self.ftype("create_promise", "amount"), "default": "{{p%d_amt}}" % i},
+                        f["date"]: {"type": "string", "default": "{{p%d_date}}" % i}}
+                fail_to = f"rec_{i}_{t + 1}" if t < tries else failn
+                self.nodes[name] = api_node(name, self.api_fn("create_promise", body, [f["amount"], f["date"]], pre=pre),
+                                            [tr(okn, "recorded", truthy(var)), tr(fail_to, "not recorded")],
+                                            mapping=[{"path": "data." + ok, "variable": var}], say=(rec["retry_say"] if t > 1 else ""))
+            self.nodes[okn] = code_node(okn, codegen.embed({}, f"vars['res_{i}'] = 'promise'\n", snippets=()), [tr(nxt, "always")])
+            self.nodes[failn] = code_node(failn, codegen.embed({}, f"vars['res_{i}'] = 'failed'\n", snippets=()), [tr(nxt, "always")])
 
     def notes_by_product(self):
         """Engine-run notes with each product's own reason (from the state machine), then finalize."""
@@ -997,7 +1022,7 @@ try:
     elif promised > 0:
         vars['outcome'] = CFG['promise_outcome']['outcome']
         vars['reason'] = CFG['promise_outcome']['reason']
-        vars['farewell'] = (CFG['after_success'] + ' ' + CFG['farewell']).strip()
+        vars['farewell'] = ((CFG['fail_say'] + ' ' if failed else '') + CFG['after_success'] + ' ' + CFG['farewell']).strip()
     elif m and reasons and all(r == m['all_notes_match']['note_reason'] for r in reasons):
         vars['outcome'] = m['all_notes_match']['outcome']
         vars['reason'] = m['all_notes_match']['reason']
