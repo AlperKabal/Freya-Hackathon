@@ -516,39 +516,21 @@ try:
             facts.append('PRODUCT ' + n + ': ' + name + '. Full past-due amount: ' + _money(full) + '. Days late: ' + str(days)
                          + ('. Band: ' + band['name'] if band else '. No band matches') + '. Minimum acceptable amount (say: the ' + floor_name + '): ' + _money(floor)
                          + ('. Deadline (latest allowed promise date): ' + spoken(deadline) + ' (' + deadline.isoformat() + ')' if deadline else '')
-                         + '. Persuasion attempts allowed: ' + (str(band['attempts']) if band else '0') + '. ' + '. '.join(steps) + '.')
+                         + '. Persuasion attempts allowed: ' + (str(band['attempts']) if band else '0') + '. ' + '. '.join(steps)
+                         + '. After attempt ' + (str(band['attempts']) if band else '0') + ' is refused there is NO other offer for this product: it ends without a promise.')
             intro.append(_fill(CFG['per_product'], dict(p, spoken_name=name, past_due=_money(full), days_late=str(days))))
+        # A short calendar: weekdays and deadlines only. Named days are checked by the date_check code node,
+        # so the model never needs to apply the date rules to this list itself (and a short prompt is a fast turn).
+        last = max([dd for (dd, n, name) in dls if dd] or [today])
+        span = max(14, min(35, (last - today).days + 3))
         lines = []
-        k = 0
-        for j in range(0, 35):
+        for j in range(0, span):
             d = today + _dt.timedelta(days=j)
-            tag = 'TODAY, ' if j == 0 else ''
-            if is_business_day(d, CFG):
-                if j > 0:
-                    k += 1
-                    tag += 'business day number ' + str(k) + ' after today'
-                else:
-                    tag += 'business day'
-            else:
-                tag += 'NOT a business day'
+            tag = ('today, ' if j == 0 else '') + ('business day' if is_business_day(d, CFG) else 'NOT a business day')
             for (dd, n, name) in dls:
                 if dd and d == dd:
-                    tag += ' <== DEADLINE of product ' + n + ' (' + name + ')'
-            after = [n for (dd, n, name) in dls if dd and d > dd]
-            if after:
-                tag += ' (after the deadline of product ' + ' and '.join(after) + ': not allowed for it)'
-            # what to do if the customer names this day, decided here by the SPEC rules, not by the model
-            todo = []
-            for (dd, n, name) in dls:
-                v = check_promise_date(d, today, dd, CFG)
-                if v['verdict'] == 'offer':
-                    od = _dt.date.fromisoformat(v['date'])
-                    todo.append(('product ' + n + ': ' if len(dls) > 1 else '') + 'offer ' + spoken(od) + ' (' + od.isoformat() + ') instead')
-                elif v['verdict'] != 'ok':
-                    todo.append(('product ' + n + ': ' if len(dls) > 1 else '') + 'not possible')
-            if todo:
-                tag += ' -> IF THE CUSTOMER NAMES THIS DAY: ' + '; '.join(todo)
-            lines.append(str(d.day) + ' ' + MONTHS[d.month - 1].capitalize() + ' is a ' + WEEKDAYS[d.weekday()].upper() + ' (' + d.isoformat() + '): ' + tag)
+                    tag += ', DEADLINE of ' + (('product ' + n + ' (' + name + ')') if len(dls) > 1 else 'the product')
+            lines.append(WEEKDAYS[d.weekday()].capitalize() + ' ' + str(d.day) + ' ' + MONTHS[d.month - 1].capitalize() + ' (' + d.isoformat() + '): ' + tag)
         monday = today - _dt.timedelta(days=today.weekday())
         w1 = ', '.join(spoken(monday + _dt.timedelta(days=j)) for j in range(7))
         w2 = ', '.join(spoken(monday + _dt.timedelta(days=7 + j)) for j in range(7))
@@ -596,9 +578,10 @@ except Exception:
             + ("A weekday said with the word next means that weekday in the NEXT calendar week. " if relw["next"] == "following_week" else "A weekday said with the word next means the first such weekday after today. ")
             + ("A weekday said with the word this means the one in THIS calendar week. " if relw["this"] == "current_week" else "")
             + "For every date the customer names, find its line in the calendar and copy the day name and the business-day status from that line. Never guess a weekday. "
-            + "When a calendar line says IF THE CUSTOMER NAMES THIS DAY, do exactly what it says: it already applies these rules.\n"
+            + "When the SYSTEM DATE CHECK at the top names a date to offer, offer exactly that date: it already applies these rules.\n"
             + ("C. A date or an amount the customer proposes is never a refusal; handle it with A and B.\n" if neg["proposal_never_refusal"] else "")
-            + f"D. {neg['flat_refusal_definition']} A flat refusal uses ONE persuasion attempt of that product; follow the product's attempts from the FACTS in order. "
+            + f"D. {neg['flat_refusal_definition']} A flat refusal is NOT the same as saying the full amount is too much: after a flat refusal never offer the minimum acceptable amount unless the product's next attempt in the FACTS is that amount. "
+            + "A flat refusal uses ONE persuasion attempt of that product; make the product's attempts from the FACTS in order, each with exactly its amount and date. "
             + "When a product's attempts are used up, stop: never repeat a refused offer. "
             + ("That product ends without a promise and you move to the next one.\n" if self.notes else f"Then call transition_to_{exhausted_exit}.\n")
             + f"E. Confirm. Read back {', '.join(conf['read_back'])} of every agreed promise together, with the date's day name, and ask '{conf['question']}'. "
@@ -647,7 +630,11 @@ except Exception:
                     + ("\n" + "\n".join("- " + t for t in free) if free else "")
                     + "\n- When every product has a recorded promise" + (" or a saved note" if self.notes else "") + ", the system ends the call; do not say goodbye yourself.")
             tools = [self.cp_tool(i, fail_exit) for i in range(1, k + 1)] + ([self.note_tool(i) for i in range(1, k + 1)] if self.notes else [])
-            trans = [tr("finalize", "Every product is done", eq("all_done", "yes")),
+            # "every product is done" is checked by routing on the variables, not by the tool hooks: two tools
+            # called in one message run their hooks on separate copies, so no single hook sees all results
+            all_done = {"logic": "or", "conditions": [{"variable": "all_done", "operator": "equals", "operand": "yes"},
+                                                      {"logic": "and", "conditions": [{"variable": f"res_{i}", "operator": "not_equals", "operand": "none"} for i in range(1, k + 1)]}]}
+            trans = [tr("finalize", "Every product is done", all_done),
                      tr("date_check", "The customer named a payment day", {"logic": "or", "conditions": [{"logic": "and", "conditions": [
                          {"variable": "named_day_text", "operator": "is_set"}, {"variable": "named_day_text", "operator": "not_equals", "operand": ""}]}]})]
             if fail_exit:
