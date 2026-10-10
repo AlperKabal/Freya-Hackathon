@@ -280,6 +280,10 @@ def _step(state, ev, plan, today, cfg):
     day = resolve_spoken_date(ev.get("day"), today, cfg) if ev.get("day") else {"status": "none", "date": ""}
     amount = parse_amount(ev.get("amount")) if ev.get("amount") else None
     sits = cfg["product_situations"]
+    # A refusal that mentions today refuses today: it does not propose it, however it is worded ("I can't pay
+    # today", "today is too much for me"). Any other day in a refusal is still the customer's proposal.
+    if day["status"] == "exact" and day["date"] == today.isoformat() and kind in ("refuse", "too_much", UNCONFIRMED):
+        day = {"status": "none", "date": ""}
     if kind not in sits:
         if day["status"] == "exact" or (amount is not None and kind in ("accept", "unclear", "refuse", "propose", UNCONFIRMED)):
             kind = "propose"

@@ -142,6 +142,26 @@ check("several products, first ask, unconfirmed: answer first, then attempt 1 of
 state, says, nxt = run(A, [CARD], [E("question")])
 check("a question is still answered without using an attempt", (says[0].startswith("ASK_FIRST: "), state["p"][0]["attempt"]), (True, 0))
 
+# A refusal that mentions today refuses today. The extraction copies the day from "I can't pay today" as if it were
+# named; taken as a proposal it would agree the full amount for today and read that back.
+for words in ("today", "right now", "can't pay today", "no way today"):
+    state, says, nxt = run(A, [CARD], [E("refuse", day=words)])
+    check(f"a refusal with {words!r} as the day: attempt 1, nothing agreed", (state["p"][0]["status"], state["p"][0]["attempt"], "Friday 16 October 2026" in says[0]), ("open", 1, True))
+state, says, nxt = run(A, [CARD], [E(UNCONFIRMED, day="today")])
+check("unconfirmed with today as the day: answer first, attempt 1", says[0], "ASK_FIRST: Can you pay 365.00 for your credit card ending 7740 on Friday 16 October 2026?")
+state, says, nxt = run(A, [CARD], [E("too_much", day="today")])
+check("too much with today as the day: the floor offer, nothing agreed", (state["p"][0]["status"], "109.50" in says[0], A["too_much_say"] in says[0]), ("open", True, True))
+state, says, nxt = run(A, [CARD], [E("refuse", day="Friday")])
+check("another day in a refusal is still a proposal", (state["p"][0]["status"], state["p"][0]["date"]), ("agreed", "2026-10-16"))
+state, says, nxt = run(A, [CARD], [E("refuse", day="not today, Friday")])
+check("'not today, Friday' is a proposal for Friday", (state["p"][0]["status"], state["p"][0]["date"]), ("agreed", "2026-10-16"))
+state, says, nxt = run(A, [CARD], [E("accept", day="today")])
+check("a yes for today is still agreed for today", (state["p"][0]["status"], state["p"][0]["date"]), ("agreed", "2026-10-14"))
+state, says, nxt = run(A, [CARD], [E("refuse"), E("question", day="today")])
+check("asking to pay today after all is still a proposal for today", (state["p"][0]["status"], state["p"][0]["date"]), ("agreed", "2026-10-14"))
+state, says, nxt = run(A, [CARD], [E("accept"), E("refuse", day="today")])
+check("a no at the read-back that mentions today is a no", (nxt, state["p"][0]["status"]), ("close", "ended"))
+
 # ---------------------------------------------------------------- 3. the generated workflow, walked turn by turn
 
 VAR = re.compile(r"\{\{([a-zA-Z_][a-zA-Z0-9_.]*)(?::json)?\}\}")
@@ -236,6 +256,11 @@ check("closed as a promise", (c.v["outcome"], c.v["reason"]), ("promise", ""))
 for said in ("What can you do for me?", "Is there any other way?", "I can't pay today. What are my options?"):
     c = Call(SPEC_A, PUB10)
     check(f"{said!r} named as the transfer situation: no transfer, attempt 1", (c.say("restructuring", said), c.transfers(), c.v["say_text"]), ("negotiate_q", [], FRIDAY))
+c = Call(SPEC_A, PUB10)
+check("the same reply with 'today' copied as the day: still attempt 1, nothing read back for today",
+      (c.say("restructuring", "I can't pay today, what are the other options", day="today"), c.transfers(), c.v["say_text"]), ("negotiate_q", [], FRIDAY))
+c = Call(SPEC_A, PUB10)
+check("a plain 'I can't pay today' with 'today' copied as the day: attempt 1 by the fixed line", (c.say("refuse", "No, I can't pay today.", day="today"), c.v["say_text"]), ("negotiate", FRIDAY))
 
 # a real request still transfers at once (practice case PUB-09 and its variants)
 for said in ("No, I cannot pay this amount. I want lower instalments.", "I can't afford it, can I get a new payment plan?", "I need smaller installments.",
