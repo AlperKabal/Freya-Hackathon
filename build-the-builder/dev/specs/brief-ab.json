@@ -470,7 +470,17 @@
   {
    "id": "restructuring",
    "trigger": "The customer asks for a new payment plan or lower instalments.",
-   "not_this": "Asking for another date or offering a smaller amount once is a proposal, handled by the date and amount rules.",
+   "not_this": "Asking for another date or offering a smaller amount once is a proposal, handled by the date and amount rules. A plain refusal, saying they cannot pay, or a question about what else is possible or what their options are is not a request for a plan.",
+   "evidence_words": [
+    "plan",
+    "instal",
+    "restructur",
+    "lower",
+    "reduc",
+    "smaller",
+    "spread",
+    "monthly"
+   ],
    "stages": [
     "negotiation",
     "confirmation"

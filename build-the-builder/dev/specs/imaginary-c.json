@@ -435,6 +435,9 @@
    "id": "manager",
    "trigger": "The contact wants their account manager.",
    "not_this": "",
+   "evidence_words": [
+    "manager"
+   ],
    "stages": [
     "identity",
     "negotiation",

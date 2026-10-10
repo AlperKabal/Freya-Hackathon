@@ -52,6 +52,14 @@ def times(n):
     return {1: "once", 2: "twice"}.get(n, f"{n} times")
 
 
+def stem_in(stem, text):
+    """Does the text hold this word stem (or phrase) at the start of a word? The same comparison as has_evidence in
+    snippets/negotiation.py, which runs on the platform and cannot be imported here."""
+    def plain(t):
+        return re.sub(r"([a-z])\1+", r"\1", re.sub(r"[^a-z0-9]+", " ", str(t or "").lower()).strip())
+    return bool(plain(stem)) and (" " + plain(stem)) in (" " + plain(text))
+
+
 def extr(name, desc, enum=None, pattern=None, conf=0.7):
     e = {"name": name, "type": "string", "description": desc, "min_confidence": conf}
     if enum: e["enum_values"] = list(enum)
@@ -155,8 +163,8 @@ class Gen:
         ob = (eff.get("outcome_by_stage") or {}).get(stage_key)
         outcome, reason = (ob["outcome"], ob["reason"]) if ob else (eff["outcome"], eff["reason"])
         say = sit["say"]                                          # a speakable sentence by SPEC contract
-        if any(a["type"] == "transfer" for a in eff["actions"]):
-            say = (say + " I am connecting you now.").strip()        # spoken after the transfer call ran
+        if any(a["type"] == "transfer" for a in eff["actions"]) and not re.search(r"\b(connect|transfer|put you through|hand you over)", say, re.I):
+            say = (say + " I am connecting you now.").strip()        # spoken after the transfer call ran; not twice when the SPEC's sentence already says it
         key = f"{sit['id']}_{stage_key}" if eff.get("outcome_by_stage") else sit["id"]
         if branch:
             key += "_" + branch
@@ -253,8 +261,21 @@ vars['day_checked'] = ''
             "max_node_turns": max(1, int(o["max_asks"])), "max_turn_transition": unclear,
             "transitions": trans}
 
-    def sit_trigger(self, x):
+    def evidence(self, x):
+        """The situation's usable evidence words (SPEC, optional). A stem needs at least three letters or digits, and
+        a word of the agent's own fixed sentences is no evidence: the customer repeats those in any reply."""
+        s = self.s
+        own = " ".join([s["opening"]["first_sentence"], s["opening"]["confirm_question"], s["account"]["statement_intro"], s["account"]["statement_per_product"],
+                        s["negotiation"]["first_ask"], s["multi_product"]["first_ask_all"], s["amounts"]["too_much"]["say"], s["amounts"]["below_min"]["say"],
+                        s["confirmation"]["question"]] + [p["spoken_name"] for p in s["account"]["product_types"]])
+        own = PH.sub(" ", own)                                   # placeholders are not words anyone says
+        words = [w.strip().lower() for w in x.get("evidence_words") or [] if isinstance(w, str)]
+        return [w for w in words if len(re.sub(r"[^a-z0-9]", "", w)) >= 3 and not stem_in(w, own)]
+
+    def sit_trigger(self, x, with_not=False):
         t = x["trigger"]
+        if with_not and x["not_this"]:
+            t += " NOT this: " + x["not_this"]
         if x["threshold"] > 1 and x["first_response"]:
             t += f" This applies only after you already did this once: {x['first_response']} and the customer insists ({x['threshold']} times in total)."
         return t
@@ -628,6 +649,11 @@ except Exception:
             if x["suppresses_persuasion"] and x.get("proposal_still_handled") and not x.get("offer"):
                 line += "Make no persuasion attempt, but if the customer still names a date or an amount themselves, handle it with A and B. "
             others.append(line)
+        if others:
+            # a situation exit cannot be undone, so the everyday replies that only look like one are named as not being one
+            others.insert(0, "Each of these applies only when the customer clearly says it. By itself, a plain no, or saying they cannot pay, is NOT one of them: the rules above handle it. "
+                             "A question about what else is possible or what their options are is NOT one of them either: say in one short sentence that you cannot offer other terms, "
+                             "then go on with the rules above.")
         free = [r["text"] for r in s["free_rules"] if set(r["applies_to"]) & {"negotiation", "confirmation", "all"}]
         for k in range(1, self.maxp + 1):
             plist = ", ".join(f"product {i} ({{{{p{i}_words}}}}: create_promise_{i}" + (f", add_note_{i}" if self.notes else "") + ")" for i in range(1, k + 1))
@@ -659,9 +685,9 @@ except Exception:
                 trans.append(tool_t("finalize", "Every product now has either a recorded promise or a saved note"))
             for x in exit_sits:
                 if x.get("offer"):
-                    trans.append(tool_t(self.offer_node(x), x["trigger"]))
+                    trans.append(tool_t(self.offer_node(x), x["trigger"] + (" NOT this: " + x["not_this"] if x["not_this"] else "")))
                 else:
-                    trans.append(tool_t(self.situation_exit(x), self.sit_trigger(x)))
+                    trans.append(tool_t(self.situation_exit(x), self.sit_trigger(x, with_not=True)))
             if exhausted_exit:
                 trans.append(tool_t(exhausted_exit, "All allowed persuasion attempts are used up and the customer still refuses"))
             self.nodes[f"negotiate_{k}"] = {"name": f"negotiate_{k}", "node_type": "conversation",
@@ -789,16 +815,29 @@ except Exception:
                  "too_much": "the customer says the amount is too much or more than they can afford, without naming another amount",
                  "propose": "the customer names a payment day or an amount of their own",
                  "vague": "the customer names only a vague period, not a day" + (f" (for example: {'; '.join(s['dates']['vague']['examples'])})" if s["dates"]["vague"]["examples"] else ""),
-                 "question": "the customer asks a question instead of answering"}
+                 "question": "the customer asks a question instead of answering, also when they ask what else is possible or what their options are"}
+        evidence = {}                        # situation id -> the words the customer's own message must contain (SPEC)
         for x in neg_sits:
-            kinds[x["id"]] = f"{x['trigger']} {x['not_this']}".strip()
+            words = self.evidence(x)
+            kinds[x["id"]] = f"{x['trigger']} {x['not_this']}".strip() + (" Only when the customer asks for exactly this in their own words." if words else "")
+            if words:
+                evidence[x["id"]] = words
         kinds["unclear"] = "anything else, or the latest message is no answer to the agent's last question"
+        # A situation exit cannot be undone, so the enum must not pull everyday replies into one (a customer who says
+        # no and asks what else is possible is refusing and asking, not requesting a transfer).
+        lead = "What the customer's LATEST message does, judged only from that message. "
+        if neg_sits:
+            lead += (f"Special situations: {', '.join(x['id'] for x in neg_sits)}. Choose one only when that message itself clearly says what its description says; "
+                     "then choose it over the other values. By itself, a plain no, saying they cannot pay, or asking what else is possible or what their options are "
+                     "is NOT a special situation unless a description says so: choose one of the other values for it. ")
         self.orch_extraction = [
-            extr("reply_kind", "What the customer's LATEST message does, judged only from that message. When a special situation applies, choose it over the others. "
-                 + " ".join(f"{k} = {v}." for k, v in kinds.items()), enum=list(kinds)),
+            extr("reply_kind", lead + " ".join(f"{k} = {v.rstrip('.')}." for k, v in kinds.items()), enum=list(kinds)),
             extr("day_text", "The payment day the customer names in the LATEST message, copied exactly as said ('tomorrow', 'next Friday', 'the 26th'). Empty if none."),
             extr("amount_text", "The amount the customer names in the LATEST message, copied exactly as said ('two hundred', '150'). Empty if none."),
             extr("about_text", "Which product the LATEST message is about, copied as said ('the car loan', 'all of them'). Empty if not said.")]
+        if evidence:
+            # the customer's own words, for the evidence check in code; a copy needs no confidence gate
+            self.orch_extraction.append(extr("said_text", "The customer's LATEST message, copied word for word, without shortening or rewording it.", conf=0.05))
         # situation exits, chosen by code from the extracted kind
         sit_cfg, sit_trans = {}, []
         for x in call_sits:
@@ -826,9 +865,12 @@ try:
     turn = str(sum(int(float(str(vars.get(n + '.total_turns') or 0))) for n in CFG['turn_nodes']))
     now = parse_now(vars.get(CFG['now_var'])) or _dt.datetime.now()
     kind = str(vars.get('reply_kind') or 'unclear')
-    ev = dict(kind=kind, day=vars.get('day_text'), amount=vars.get('amount_text'), about=vars.get('about_text'))
     nxt, say, instr = 'talk', str(vars.get('say_text') or ''), ''
     if turn != str(vars.get('neg_turn_done') or ''):
+        unsure = kind in CFG['evidence'] and not situation_confirmed(kind, vars.get('said_text'), st, CFG['evidence'][kind])
+        if unsure:
+            kind = UNCONFIRMED
+        ev = dict(kind=kind, day=vars.get('day_text'), amount=vars.get('amount_text'), about=vars.get('about_text'))
         if kind in CFG['call_situations']:
             c = int(st['sit'].get(kind, 0)) + 1
             st['sit'][kind] = c
@@ -841,11 +883,14 @@ try:
             st, say2, nxt = step(st, ev, plan, now.date(), CFG)
             say = say2 or say
             if say.startswith('ASK_FIRST: '):
-                say, nxt, instr = say[len('ASK_FIRST: '):], 'ask', 'Answer the customer question in one short sentence, using only the facts given.'
+                say, nxt = say[len('ASK_FIRST: '):], 'ask'
+                instr = ('The customer asked for something you cannot offer on this call. Say so in one short sentence, without naming or describing any alternative.' if unsure
+                         else 'Answer the customer question in one short sentence, using only the facts given.')
     vars['neg_turn_done'] = turn
     vars['nst'] = json.dumps(st)
-    for k in ('day_text', 'amount_text', 'about_text'):
+    for k in ('day_text', 'amount_text', 'about_text', 'said_text'):
         vars[k] = ''
+    vars['reply_kind'] = 'unclear'          # consumed: a turn whose kind is not extracted must not repeat this one
     vars['say_text'] = say
     vars['say_instr'] = instr
     vars['neg_next'] = nxt
@@ -861,7 +906,7 @@ try:
 except Exception:
     vars['neg_next'] = 'talk'
 """
-        cfg = self.cfg(**nc, call_situations=sit_cfg, turn_nodes=turn_nodes)
+        cfg = self.cfg(**nc, call_situations=sit_cfg, turn_nodes=turn_nodes, evidence=evidence)
         self.nodes["neg_eval"] = code_node("neg_eval", codegen.embed(cfg, body, snippets=("dates", "negotiation")),
                                            sit_trans + [tr("rec_gate_1", "the customer confirmed the read-back", eq("neg_next", "record")),
                                                         tr("neg_close", "nothing was agreed", eq("neg_next", "close")),

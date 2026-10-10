@@ -7,7 +7,13 @@ dates snippet, which it uses) and locally in tests. Only json, re, datetime; no 
     event: {"kind": ..., "day": words, "amount": words, "about": words}   (kind from the extraction enum)
     nxt: "talk" (say it and wait) | "record" (the customer confirmed the read-back) | "close" (nothing agreed)
 A say text that starts with ASK_FIRST: means: answer the customer's question in one sentence, then say the rest.
+
+A special situation that cannot be undone (a transfer, the end of the call) is checked before it acts:
+    ok = situation_confirmed(kind, said, state, words)      # words: the SPEC's evidence words of that situation
+When the customer's own words do not carry it, the turn goes through step() as the kind UNCONFIRMED instead.
 """
+
+UNCONFIRMED = "unconfirmed"      # an event kind only code writes: the extraction named a situation the words did not carry
 
 _SMALL = {"zero": 0, "oh": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
           "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
@@ -63,6 +69,39 @@ def parse_amount(text):
 
 def money(x):
     return "%.2f" % float(x)
+
+
+def _plain(text):
+    """Lower case, letters and digits only, a doubled letter as one: spelling variants of a word compare equal."""
+    t = _re.sub(r"[^a-z0-9]+", " ", str(text or "").lower()).strip()
+    return _re.sub(r"([a-z])\1+", r"\1", t)
+
+
+def has_evidence(said, words):
+    """Do the customer's own words contain one of the evidence words (a word stem or a phrase, at the start of a word)?"""
+    t = " " + _plain(said)
+    for w in words or []:
+        w = _plain(w)
+        if w and (" " + w) in t:
+            return True
+    return False
+
+
+def situation_confirmed(kind, said, state, words):
+    """May the special situation the extraction named act now? Code overrules the extraction only on evidence:
+    with no evidence words, or without the customer's words, the extraction stands. With the words at hand and none
+    of the evidence words in them, the first time is not acted on; the second time the customer insists and it is."""
+    if not words or not _plain(said):
+        return True
+    if has_evidence(said, words):
+        return True
+    weak = state.setdefault("weak", dict())
+    weak[kind] = int(weak.get(kind, 0)) + 1
+    return weak[kind] >= 2
+
+
+def _answer_first(say, nxt):
+    return ("ASK_FIRST: " + say) if (nxt == "talk" and say) else say
 
 
 def new_state(plan):
@@ -222,9 +261,9 @@ def _step(state, ev, plan, today, cfg):
     amount = parse_amount(ev.get("amount")) if ev.get("amount") else None
     sits = cfg["product_situations"]
     if kind not in sits:
-        if day["status"] == "exact" or (amount is not None and kind in ("accept", "unclear", "refuse", "propose")):
+        if day["status"] == "exact" or (amount is not None and kind in ("accept", "unclear", "refuse", "propose", UNCONFIRMED)):
             kind = "propose"
-        elif day["status"] == "vague" and kind in ("refuse", "unclear", "propose"):
+        elif day["status"] == "vague" and kind in ("refuse", "unclear", "propose", UNCONFIRMED):
             kind = "vague"
     # ---- the read-back was answered
     if state["phase"] == "confirm":
@@ -248,7 +287,7 @@ def _step(state, ev, plan, today, cfg):
             state["cursor"] = target[0]
             return _on_product(state, kind, day, amount, plan, today, cfg)
         nxt, say = _finish(state, plan, cfg)
-        return state, ("ASK_FIRST: " + say) if kind == "question" else say, nxt
+        return state, _answer_first(say, nxt) if kind in ("question", UNCONFIRMED) else say, nxt
     # ---- a situation about one product (only in briefs that note products and continue)
     if kind in sits:
         i = _which(ev.get("about"), plan, state["cursor"])
@@ -272,12 +311,12 @@ def _step(state, ev, plan, today, cfg):
         if multi and kind == "propose":
             state["cursor"] = _which(ev.get("about"), plan, 0)
             return _on_product(state, kind, day, amount, plan, today, cfg)
-        if multi and kind in ("refuse", "too_much", "unclear"):
+        if multi and kind in ("refuse", "too_much", "unclear", UNCONFIRMED):
             if kind == "too_much":
                 for x in state["p"]:
                     x["too_much"] = True
             nxt, say = _next_product(state, plan, cfg)
-            return state, say, nxt
+            return state, _answer_first(say, nxt) if kind == UNCONFIRMED else say, nxt
         state["cursor"] = 0
         return _on_product(state, kind, day, amount, plan, today, cfg)
     if kind == "propose" and day["status"] == "exact" and _to_all(ev.get("about"), multi) and amount is None:
@@ -331,4 +370,12 @@ def _on_product(state, kind, day, amount, plan, today, cfg):
         return _refused(state, i, plan, cfg)
     if kind == "refuse":
         return _refused(state, i, plan, cfg)
+    if kind == UNCONFIRMED:
+        # the customer asked for something else, not clearly enough to act on: a non-answer, so the next persuasion
+        # offer if one is left; with none left the open offer is repeated (a question never ends a product)
+        if x["attempt"] < len(pp["ladder"]):
+            state, say, nxt = _refused(state, i, plan, cfg)
+        else:
+            say, nxt = _offer_text(pp, x, cfg), "talk"
+        return state, _answer_first(say, nxt), nxt
     return state, ("ASK_FIRST: " if kind == "question" else "") + _offer_text(pp, x, cfg), "talk"
