@@ -23,6 +23,24 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
 | 2026-10-10 16:04 | `yasar-base` v1 (base agent) | A | none | 1 | **0/10** (README said ~2/13) | all | see "Baseline analysis" below; median slowest turn 5 s, so not a slow-model run |
 | 2026-10-10 16:28 | `yasar-base` v1 | A+B | none | 1 | **0/13** | all | A failures shift run to run (PUB-03 outcome `no_promise/refused` vs `None` before; PUB-08 `None` vs `promise`): the end-of-call guess is random. PUB-13: model put the sum 1200 on both products |
 | 2026-10-10 17:16-17:48 | example builder (`brief-a` slot, agent `d620a1b2...`) | A | none | 1 (x7 runs) | 9, 1/1, 9, 9, 0/1 (reps 3), 8, **8/10 last** | a different case each run: PUB-10, PUB-04, PUB-06, then PUB-06+PUB-10 | see "Example builder baseline" |
+| 2026-10-10 17:57-18:08 | example builder, A+B input (slots `brief-a` v7, `brief-b` v2) | A, B | none | 1 each | A **10/10**; B 2/3 then **3/3** | B run 1: PUB-13 | PUB-13: the model believed 2026-10-30 was a Saturday and moved the promise to 11-02 |
+
+### Example builder on A+B (second session, warm start)
+
+- Build: **659 s (11 min)**, 40 turns, reported API-equivalent $2.30. **Warm start**: it reused and patched
+  `out/gen_a.py` from the first session, so 11 min is not a cold build time. Cold estimate for A+B: 32 + 11 min.
+- With two briefs it built **two agents** (one per brief file = one per slot) and overwrote the `brief-a`
+  workflow (old version backed up in `results/example-a/`, new outputs in `results/example-ab/`).
+- Its fixes confirm two of our lessons: PUB-06 passed after the floor amount is named only once (later offers name
+  only the date); PUB-10 passed after a fixed failure sentence without the word "recorded".
+- Brief B design: one negotiation node per product count (1, 2 or 3 products), per-product tools
+  `create_promise_N` / `add_note_N` with `product_id` baked, per-product deadlines and attempt counters in code,
+  closing outcome computed in a code node from per-product state. 29 nodes, `gen_b.py` 343 lines.
+- **Weekday hallucination**: the agent model got the weekday of a date wrong (PUB-13 run 1). Fix that worked:
+  write the calendar into the prompt with explicit weekday names. Rule for us: the model never derives a weekday.
+- Not tested by it: the B agent on single-product customers, transfers, paid, tool failure. Note that the A cases'
+  expectations follow Brief A (e.g. no `add_note`), so a B agent that follows B rule 8 on an A case can fail on
+  notes although it is right for Brief B.
 
 ### Example builder baseline (Brief A)
 
