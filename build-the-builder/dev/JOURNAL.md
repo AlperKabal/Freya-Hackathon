@@ -40,9 +40,12 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
   2026-10-23; early-band deadline (12th business day, skipping the holiday 2026-10-26) = 2026-11-02; attempt-1 date
   (last business day of this week) = 2026-10-16. These match PUB-04, PUB-06, PUB-07, PUB-10 and PUB-13.
 
+- **Mock rejects unknown case ids** (2026-10-10): `POST /v1/practice/sessions {"case": "PUB-99"}` ->
+  `{"ok": false, "error": "unknown practice case"}`. So the builder cannot create its own test customers on a
+  hidden brief; the hidden-brief self-test must be brief-independent (lint, local snippet runs, dry run, chat).
+
 ## Open questions
 
-- Does the mock open a practice session for a case id that is not in the public set? (to test in Phase 0)
 - Example builder: score, build time, cost on Brief A (blocked on the missing skill file).
 - `docs/workflow-format.md` says "no `null` values", but `examples/base-agent.json` contains
   `"max_turn_transition": null` and `"passthrough_default_transition": null` (it looks like a platform export).
