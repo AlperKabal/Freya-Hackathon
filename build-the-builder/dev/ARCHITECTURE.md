@@ -40,6 +40,13 @@ everything and routes with seven `matches_intent` conditions.
 
 ## 1. The builder: agents and stages
 
+**Decision (2026-10-10, Yaşar): light set = 1 Reader + Binder + Auditor**, to save Claude Pro quota and build time.
+The Auditor's findings go back to the Reader for one repair round; code re-validates after it. The full design
+below (two Readers + Adjudicator) stays documented as the upgrade path if extraction quality turns out too low in
+Phase 4; switching only adds agents in stage 1 and 3, the rest is unchanged.
+
+Original full design:
+
 ```
                        ┌────────────── Stage 1, in parallel ───────────────┐
 brief files ─► ingest ─┤ Reader A  (rule by rule)      → SPEC draft A      │

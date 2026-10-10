@@ -14,6 +14,8 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
 | 2026-10-10 | Tools are found by their seven fixed names; request fields through `spec.tool_fields`, response fields through `identity.result_fields` and `account.product_fields` | The README guarantees tool names but not field names |
 | 2026-10-10 | Builder stays standard library only (no pydantic, no jsonschema) for its own code | Fewer install problems on the organisers' rerun |
 | 2026-10-10 | Generality test: imaginary Brief C (business customers, 3 bands, Mon-Sat, calendar-day deadline, renamed API fields, other outcomes) fits the schema with no schema change | Evidence the schema is not shaped only by Brief A/B |
+| 2026-10-10 | Phone agent: one workflow of specialist nodes (extraction understands, code decides, TTS/LLM speaks); no `invoke_agent` | Exported workflow is loaded into the organisers' workspace, so cross-agent ids would break; also undocumented, model rule, latency (see ARCHITECTURE.md) |
+| 2026-10-10 | Builder agents: light set, 1 Reader + Binder + Auditor (one repair round) | Yaşar's choice: Claude Pro quota and build time; two-Reader design kept as upgrade path |
 | 2026-10-10 | `dev/check_no_brief_literals.py` before every commit; it derives brief values from the brief and API files at run time | It caught Brief A variable names in our own docstring examples |
 
 ## Freya slots (ours)
