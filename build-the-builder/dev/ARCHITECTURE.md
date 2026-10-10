@@ -38,6 +38,20 @@ Most turns then cost **one** model call (extraction): routing runs on variables 
 That is faster than the example builder's design, where a large negotiation node lets the dialogue model decide
 everything and routes with seven `matches_intent` conditions.
 
+## 0b. Migration plan (decided 2026-10-10)
+
+1. **v1 first, end to end** (done in code, `builder/generate.py`): the structure of the example builder's
+   `gen_a.py` / `gen_b.py` (which scored 10/10 on A and 3/3 on B in single runs), parameterised by the SPEC:
+   identity, calendar code (`builder/snippets/dates.py`), situation exits, closing; negotiation stays one LLM node
+   per product count. The whole pipeline (SPEC -> generate -> verify -> save -> export -> trace) runs on v1, so a
+   submittable agent exists at every moment.
+2. **Then move pieces to the orchestrator one at a time**, easiest wins first: (a) recording as engine-run code steps,
+   (b) multi-product slots, (c) `negotiate_eval` last. After each step: `run_cases.py` against v1; keep only what wins.
+3. **Decision point: Sunday 11 October 14:00 Turkey time (11:00 UTC).** If the orchestrated version is not better
+   than v1 on Brief A and B with `--reps 3`, ship v1 and spend the rest of the time on imaginary-brief tests and
+   robustness.
+4. Experiments X1-X3, X6 (`dev/exp_loop.py`) run in parallel; they only gate step 2c.
+
 ## 1. The builder: agents and stages
 
 **Decision (2026-10-10, Yaşar): light set = 1 Reader + Binder + Auditor**, to save Claude Pro quota and build time.

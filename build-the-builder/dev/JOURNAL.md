@@ -16,6 +16,9 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
 | 2026-10-10 | Generality test: imaginary Brief C (business customers, 3 bands, Mon-Sat, calendar-day deadline, renamed API fields, other outcomes) fits the schema with no schema change | Evidence the schema is not shaped only by Brief A/B |
 | 2026-10-10 | Phone agent: one workflow of specialist nodes (extraction understands, code decides, TTS/LLM speaks); no `invoke_agent` | Exported workflow is loaded into the organisers' workspace, so cross-agent ids would break; also undocumented, model rule, latency (see ARCHITECTURE.md) |
 | 2026-10-10 | Builder agents: light set, 1 Reader + Binder + Auditor (one repair round) | Yaşar's choice: Claude Pro quota and build time; two-Reader design kept as upgrade path |
+| 2026-10-10 | v1 first: `builder/generate.py` = example builder's gen_a/gen_b structure, all content from the SPEC; then migrate to the orchestrator piece by piece, keeping only what wins in `run_cases.py`; decision point Sunday 14:00 TR (11:00 UTC) | A submittable agent at every moment; the orchestrator must beat a known baseline |
+| 2026-10-10 | `builder/verify.py`: lint (15 planted workflow bugs, all caught) + every code node and hook executed on 36 calendar days | Self-test without practice cases |
+| 2026-10-10 | Inspection found a semantic bug lint cannot see: hardship accept and decline went to the same exit (support transfer). Fixed with branch keys | Motivates the state-machine test in ARCHITECTURE.md section 3 |
 | 2026-10-10 | `dev/check_no_brief_literals.py` before every commit; it derives brief values from the brief and API files at run time | It caught Brief A variable names in our own docstring examples |
 
 ## Freya slots (ours)
