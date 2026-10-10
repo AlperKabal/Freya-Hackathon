@@ -168,6 +168,22 @@ class Gen:
                 self.nodes[name] = api_node(name, self.api_fn("transfer_to_agent", {q: {"type": "string", "default": a["queue"]}}, [q]),
                                             [tr(target, "always")])
                 target = name
+            elif a["type"] == "callback":
+                name = f"do_{key}_callback{i}"
+                f = self.tf["schedule_callback"]
+                self.nodes[name] = api_node(name, self.api_fn("schedule_callback", {
+                    f["date"]: {"type": "string", "default": "{{cb_date_iso}}"},
+                    f["time"]: {"type": "string", "default": "{{cb_time_norm}}"}
+                }, []), [tr(target, "always")])
+                target = name
+            elif a["type"] == "note":
+                name = f"do_{key}_note{i}"
+                f = self.tf["add_note"]
+                self.nodes[name] = api_node(name, self.api_fn("add_note", {
+                    f["product_id"]: {"type": "string", "default": "{{p1_id}}"},
+                    f["reason"]: {"type": "string", "default": a.get("note_reason") or ""}
+                }, []), [tr(target, "always")])
+                target = name
         return target
 
     def stage_situations(self, stage):
@@ -427,6 +443,7 @@ except Exception:
                 + ("Asking what the call is about instead of answering counts as declining. " if dec["purpose_question_counts"] else "")
                 + " ".join(self.sit_line(x) for x in sits))
         trans = [tr("load_account", "All answers verified", truthy("all_verified", "verify_identity_response.data." + rf["all_verified"])),
+                 tool_t("load_account", "All security questions have been answered correctly"),
                  tr(failed, "Too many wrong answers", {"logic": "or", "conditions": [{"variable": v, "operator": "equals", "operand": o}
                                                                                     for v in ("wrong_left", "verify_identity_response.data." + rf["wrong_left"]) for o in ("0", "0.0")]}),
                  tool_t(declined, f"The customer still declines the security questions after one explanation ({dec['max_declines']} refusals in total)"
@@ -573,16 +590,26 @@ except Exception:
         fail_exit = None if self.notes else self.exit("record_failed", fin_fail["outcome"], fin_fail["reason"], self.farewell(rec["failure_say"]))
         exhausted_exit = None if self.notes else self.exit("attempts_exhausted", exhausted["outcome"], exhausted["reason"], self.farewell())
         relw = dt_["relative_weekday"]
+        def fmt_am(r):
+            k = r.get("kind") if r else ""
+            if k == "full": return "the full past-due amount"
+            if k == "floor": return "that product's minimum acceptable amount"
+            if k == "next_attempt": return "the amount from that product's next attempt in the FACTS"
+            if k == "current_attempt": return "the amount from that product's current attempt in the FACTS"
+            if k == "full_or_floor_if_too_much": return "the full past-due amount (or its minimum acceptable amount if they say the full amount is too much)"
+            if k == "percent_of_full": return f"{r.get('percent', 100)}% of the full past-due amount"
+            return "the amount"
+
         rules = (
             "A. Amounts. " + ("You propose every amount; never ask an open question about how much they can pay"
                               + (f" (forbidden: {'; '.join(neg['forbidden_questions'])})" if neg["forbidden_questions"] else "") + ". " if am["never_ask_open_amount"] else "")
-            + "Start with the full past-due amount. "
-            + f"If the customer says the full amount is too much, offer that product's minimum acceptable amount {times(am['too_much']['times'])} only"
+            + f"Start with {fmt_am(am.get('first_offer'))}. "
+            + f"If the customer says that amount is too much, offer {fmt_am(am['too_much']['offer'])} {times(am['too_much']['times'])} only"
             + (f", and in the same sentence say: '{am['too_much']['say']}'" if am["too_much"]["say"] else "") + ". "
             + ("If they refuse it, that is a flat refusal. " if am["too_much"]["refused_is_flat_refusal"] else "")
             + "After you named that amount once, never say it again for that product until the read-back: a later proposal names only the date. "
-            + "An amount the customer proposes from the minimum acceptable amount up to the full amount (both included) is accepted. "
-            + "Below it, say: '" + (am["below_min"]["say"] or "That amount cannot be accepted.") + "' " + "Offer the minimum acceptable amount once"
+            + f"An amount the customer proposes from {fmt_am(am.get('accept_min'))} up to {fmt_am(am.get('accept_max'))} (both included) is accepted. "
+            + "Below it, say: '" + (am["below_min"]["say"] or "That amount cannot be accepted.") + "' " + f"Offer {fmt_am(am['below_min']['offer'])} {times(am['below_min']['times'])} only"
             + ("; if they do not accept, that is a flat refusal" if am["below_min"]["refused_is_flat_refusal"] else "") + ". Never use internal words like 'floor' or 'band' with the customer.\n"
             + "B. Dates. A promise date must be today or later, " + ("a business day per the calendar, " if dt_["business_day_only"] else "")
             + "and NOT after that product's deadline. "
@@ -639,7 +666,7 @@ except Exception:
                     "FACTS:\n{{deal_facts}}\nCALENDAR (the only source for dates; never work out dates yourself):\n{{calendar_text}}\n\n"
                     "HOW THE CALL GOES\n1. If the customer can pay " + ("all of them" if many else "it") + " today, the promise is the full past-due amount today" + (" for every product" if many else "") + "; go to the read-back.\n"
                     + ("2. Otherwise go through the products ONE BY ONE in the order above. For each product start at attempt 1 and count its persuasion attempts separately, with that product's own facts.\n"
-                       "3. If the customer names ONE date for everything: use it for every product where it is allowed. If it is after one product's deadline, that product goes on its OWN deadline; say so in the read-back. The others keep the date the customer named.\n" if many else
+                       + (f"3. {s['multi_product']['one_date_rule']}\n" if s["multi_product"].get("one_date_rule") else "") if many else
                        "2. Otherwise follow the rules below.\n")
                     + "\nRULES\n" + rules + "\nOTHER SITUATIONS\n" + "\n".join(others)
                     + ("\n" + "\n".join("- " + t for t in free) if free else "")

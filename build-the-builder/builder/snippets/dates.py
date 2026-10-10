@@ -185,6 +185,7 @@ def resolve_spoken_date(text, today, cfg):
     `today` is the call's own date (from `now`), never the real clock."""
     t = " " + _re.sub(r"[^a-z0-9/\- ]", " ", str(text or "").lower()) + " "
     t = _re.sub(r"\s+", " ", t)
+    t = _re.sub(r"\b(not today|not now|can t .*? now)\b", " ", t)
     none = {"status": "none", "date": ""}
     if not t.strip():
         return none
@@ -230,7 +231,7 @@ def resolve_spoken_date(text, today, cfg):
                 return {"status": "exact", "date": d.isoformat()}
         # a weekday, with this / next / plain
         for i, name in enumerate(WEEKDAYS):
-            m = _re.search(rf"\b(this |next |coming |on )?{name}\b", t)
+            m = _re.search(rf"\b(this |next |coming |on )?(?:week )?{name}\b", t)
             if not m:
                 continue
             mod = (m.group(1) or "").strip()
@@ -256,7 +257,7 @@ def _upcoming(today, weekday, include_today=False):
     return today + _dt.timedelta(days=delta)
 
 
-_VAGUE = [r"\bnext week\b", r"\bweek after next\b", r"\bend of (the )?(month|week|year)\b", r"\b(beginning|start|middle|mid) of\b",
+_VAGUE = [r"\bnext week\b", r"\bweek after next\b", r"\bend of (the )?(month|week|year|" + "|".join(MONTHS) + r")\b", r"\b(beginning|start|middle|mid) of\b",
           r"\bsalary\b", r"\bpay ?day\b", r"\b(get|getting|am|i m) paid\b", r"\bthis week\b", r"\bsoon\b", r"\blater\b", r"\bsometime\b", r"\bin a (few|couple)\b", r"\bin (two|three|a few) weeks\b",
           r"\bnext month\b", r"\bwhen i can\b", r"\bnot sure\b"]
 
@@ -343,7 +344,7 @@ def check_promise_date(day, today, deadline, cfg):
         if cfg["after_deadline"] == "offer_deadline":
             return {"verdict": "offer", "date": deadline.isoformat(), "why": "after the deadline"}
         return {"verdict": "invalid", "date": "", "why": "after the deadline"}
-    if cfg["business_day_only"] and not is_business_day(day, cfg):
+    if cfg.get("business_day_only", True) and not is_business_day(day, cfg):
         if cfg["non_business_day"] == "offer_next_business_day":
             nxt = next_business_day(day, cfg)
             if deadline and nxt > deadline:

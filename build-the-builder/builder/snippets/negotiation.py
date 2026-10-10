@@ -35,10 +35,10 @@ def parse_amount(text):
     """'four hundred and fifty-five' -> 455.0, '153.50' -> 153.5, '1,320' -> 1320.0, 'one twenty five' -> 125.0,
     '637 pounds 50' -> 637.5. None if no amount."""
     t = str(text or "").lower().replace(",", "").replace("-", " ")
-    m = _re.search(r"(\d+(?:\.\d{1,2})?)", t)
+    m = _re.search(r"\b(\d+(?:\.\d{1,2})?)\b", t)
     if m:
         v = float(m.group(1))
-        cents = _re.search(r"\d+\s*(?:pounds?|euros?|dollars?|lira)\s*(?:and\s*)?(\d{1,2})\b", t)
+        cents = _re.search(r"\d+\s*(?:pounds?|euros?|dollars?|lira)\s*(?:and\s*)?\b(\d{1,2})\b", t)
         if cents and "." not in m.group(1):
             v += int(cents.group(1)) / 100.0
         return round(v, 2)
@@ -47,17 +47,36 @@ def parse_amount(text):
         if w in _SMALL or w in ("hundred", "thousand"):
             seq = words[i:]
             point = seq.index("point") if "point" in seq else None
-            head = seq[:point] if point is not None else seq
+            head = seq[:point] if point is not None else []
+            if point is None:
+                for j, x in enumerate(seq):
+                    if x not in _SMALL and x not in ("hundred", "thousand", "and", "a"):
+                        head = seq[:j]
+                        break
+                else:
+                    head = seq
             whole = _words_value(head)
             if whole is None:
                 return None
-            if len(head) >= 2 and head[0] in _SMALL and _SMALL[head[0]] < 10 and head[1] in _SMALL and _SMALL[head[1]] >= 10:
-                whole = _SMALL[head[0]] * 100 + (_words_value(head[1:]) or 0)          # "one twenty five" = 125
+            if len(head) >= 2 and head[0] in _SMALL and head[1] in _SMALL and _SMALL[head[1]] >= 10:
+                if _SMALL[head[0]] < 10 or (10 <= _SMALL[head[0]] <= 99):
+                    whole = _SMALL[head[0]] * 100 + (_words_value(head[1:]) or 0)          # "one twenty five" = 125, "twelve fifty" = 1250
             frac = 0.0
             if point is not None:
                 digits = [str(_SMALL[x]) for x in seq[point + 1:point + 3] if x in _SMALL and _SMALL[x] < 10]
                 frac = float("0." + "".join(digits)) if digits else 0.0
+            else:
+                tail = seq[len(head):]
+                cents_head = []
+                for x in tail:
+                    if x in _SMALL: cents_head.append(x)
+                    elif cents_head and x not in ("and", "a", "cents", "cent", "pence", "pennies", "penny"): break
+                if cents_head:
+                    cv = _words_value(cents_head)
+                    if cv is not None and cv < 100:
+                        frac = cv / 100.0
             return round(whole + frac, 2)
+    return None
     return None
 
 
@@ -209,7 +228,8 @@ def step(state, ev, plan, today, cfg):
     """One customer turn. Never raises: on any error it asks the customer to repeat."""
     try:
         return _step(state, ev, plan, today, cfg)
-    except Exception:
+    except Exception as e:
+        state["neg_error"] = str(e)
         return state, "Sorry, could you say that again?", "talk"
 
 

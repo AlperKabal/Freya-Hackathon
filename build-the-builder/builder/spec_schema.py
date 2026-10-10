@@ -178,6 +178,7 @@ SCHEMA = {
         "enabled": bool, "state_all_first": bool, "ask_all_today_once": bool, "first_ask_all": str,
         "order": Enum(["as_returned"]), "attempts_per_product": bool,
         "one_date_clamped_per_product": bool, "single_read_back": bool,
+        Opt("one_date_rule"): str,
         "unrecorded_on_transfer": Enum(["drop", "record"]),
     },
     "notes": {"enabled": bool, "for_each_product_without_promise": bool, "reasons": [str], "on_transfer": Enum(["none", "add"])},
