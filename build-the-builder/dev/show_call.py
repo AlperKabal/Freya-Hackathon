@@ -33,7 +33,23 @@ def main(args):
             print(f"#   - {f}")
     call = freya.get_call(cid)
     print(f"# call {cid}  endedReason={call.get('endedReason')}  duration={call.get('duration')}s\n")
+    prev = {}
+
+    def var_changes(table, ts):
+        """Print the variables that changed since the last table: how code nodes and extraction moved the state."""
+        for k, v in sorted((table or {}).items()):
+            val = v.get("value") if isinstance(v, dict) else v
+            if ".header." in k or k.startswith("system.") or k in ("calendar_text", "deal_facts"):
+                continue
+            if prev.get(k) != val:
+                prev[k] = val
+                print(f"{ts}     [var] {k} = {short(val, 140)}")
+
     for m in call.get("messages", []):
+        snap = (m.get("workflowSnapshot") or {}).get("variableTable")
+        if snap:
+            t = m.get("secondsFromStart")
+            var_changes(snap, f"{t:6.1f}s" if isinstance(t, (int, float)) else "       ")
         role, t = m.get("role"), m.get("secondsFromStart")
         ts = f"{t:6.1f}s" if isinstance(t, (int, float)) else "       "
         if role in ("assistant", "user"):
@@ -54,6 +70,7 @@ def main(args):
             r = ev.get("result") or {}
             print(f"{ts}   [done] {ev.get('function')} -> {short(r.get('data', r) if isinstance(r, dict) else r)}")
         elif kind == "route_evaluated":
+            var_changes(ev.get("variable_table"), ts)
             if ev.get("matched"):
                 print(f"{ts}   [route] {ev.get('from_node')} -> {ev.get('target')}: {short(ev.get('reason'), 160)}")
         elif kind == "error":
