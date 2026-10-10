@@ -18,8 +18,8 @@ You are taking over a hackathon builder from another agent. Read, in this order:
   -> export -> trace in `traces/`. Outputs in `out/<slot>.*` (spec, audit, workflow, export).
 - `--mode v1`: one LLM negotiation node (proven). `--mode orch`: state machine `builder/snippets/negotiation.py`
   decides offers, TTS says them, engine-run `create_promise`; model only answers questions (`negotiate_q`).
-- Checks: `python dev/test_spec_schema.py`, `dev/test_dates.py`, `dev/test_negotiation.py`, `dev/test_situation_guard.py`,
-  `dev/check_no_brief_literals.py`.
+- Checks: `python dev/test_spec_schema.py`, `dev/test_dates.py`, `dev/test_not_today.py`, `dev/test_negotiation.py`,
+  `dev/test_situation_guard.py`, `dev/check_no_brief_literals.py`.
 - Debug a run: `python dev/show_call.py results/<run>.json PUB-xx > results/x.txt` (speech, nodes, tools, variable changes).
 
 ## Scores (practice cases; SPECs extracted by the builder itself)

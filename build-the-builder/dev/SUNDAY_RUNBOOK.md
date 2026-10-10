@@ -13,6 +13,7 @@ source env.sh                              # FREYA_API_KEY, FREYA_API_URL, FREYA
 python dev/check_claude_login.py           # "auth: Claude login" or API key, model answers
 python dev/test_spec_schema.py | tail -1   # all good
 python dev/test_dates.py | tail -1         # all good
+python dev/test_not_today.py | tail -1     # all good
 python dev/test_negotiation.py | tail -1   # all good
 python dev/test_situation_guard.py | tail -1   # all good
 python dev/check_no_brief_literals.py | tail -1   # clean

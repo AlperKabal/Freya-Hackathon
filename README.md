@@ -45,6 +45,7 @@ the three-of-three rule. Orch is not yet qualified; see `dev/JOURNAL.md`.
 ```bash
 python dev/test_spec_schema.py
 python dev/test_dates.py
+python dev/test_not_today.py
 python dev/test_negotiation.py
 python dev/test_situation_guard.py
 python dev/check_no_brief_literals.py
