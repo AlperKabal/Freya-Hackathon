@@ -20,6 +20,22 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
 
 | Time (UTC) | Workflow / version | Brief | Style | Reps | Score | Failed cases | Cause |
 |---|---|---|---|---|---|---|---|
+| 2026-10-10 16:04 | `yasar-base` v1 (base agent) | A | none | 1 | **0/10** (README said ~2/13) | all | see "Baseline analysis" below; median slowest turn 5 s, so not a slow-model run |
+
+### Baseline analysis (base agent, Brief A)
+
+| Case | Root cause | Mechanism that fixes it |
+|---|---|---|
+| PUB-01 | Text-message sentence after the promise never said | Post-hook on `create_promise` + required sentence from SPEC |
+| PUB-02 | No `schedule_callback` tool, no third-party path; outcome guessed `unclear` | Structure: `who_answered` enum -> third-party node with callback tool, validated in code |
+| PUB-03 | Outcome `(None, None)`; app/branch not mentioned; agent claims a transfer that never happened | Code sets outcome/reason; post-hook `what_to_do_next` on `verify_identity` |
+| PUB-04 | Promise recorded on the customer's date (11-06), past the deadline (10-23) | Deadline computed in code; date validated in code before baking |
+| PUB-05 | Support team not offered; reason `refused` instead of `hardship` | Hardship exit with `transfer_to_agent`; reason from code |
+| PUB-06 | "Rest stays overdue" sentence missing | Prompt rule from SPEC (floor offer wording) |
+| PUB-07 | Holiday 10-26 accepted | Business-day check in code |
+| PUB-08 | "Already paid" turned into a promise; `paid` not in the outcome enum | Intent enum -> paid exit; outcome enum taken from the tool API file |
+| PUB-09 | No `transfer_to_agent` tool | Restructuring exit with transfer, queue baked |
+| PUB-10 | No retry after the first `create_promise` failure; outcome `(None, None)` | Retry once (post-hook says so); outcome from code |
 
 ## Platform and kit facts (verified by us)
 
@@ -43,6 +59,15 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
 - **Mock rejects unknown case ids** (2026-10-10): `POST /v1/practice/sessions {"case": "PUB-99"}` ->
   `{"ok": false, "error": "unknown practice case"}`. So the builder cannot create its own test customers on a
   hidden brief; the hidden-brief self-test must be brief-independent (lint, local snippet runs, dry run, chat).
+
+- **Lifecycle `close_call` with unset `{{outcome}}`: a model guesses it** (seen in the baseline). PUB-08 got
+  `outcome: promise` from the conversation. In PUB-03 and PUB-10 the ledger shows `(None, None)`: the guess left
+  the field out. So outcome and reason must be set in code during the call.
+- The base agent's `pre_process_code` on `close_call` removed `reason` when outcome was `promise` (PUB-08 body has
+  no `reason`). Pre-hooks on lifecycle tools work.
+- `end_call` as a tool with `trigger_pattern` ends the call after the agent says the phrase; `endedReason` is then
+  `assistant-ended-call`, and `close_call` runs about 3 s later.
+- `dev/show_call.py` works on real calls (PUB-02, PUB-08).
 
 ## Open questions
 
