@@ -82,7 +82,11 @@ class Gen:
         return self.ph(self.s["addressing"])
 
     def farewell(self, *parts):
-        return " ".join(p.strip() for p in list(parts) + [self.s["closing"]["farewell"]] if p and p.strip())
+        said = " ".join(p.strip() for p in parts if p and p.strip())
+        fw = self.s["closing"]["farewell"].strip()
+        if fw and (fw.lower() in said.lower() or re.search(r"\b(good ?bye|bye)\b", said, re.I)):
+            return said                                    # the situation's own sentence already closes the call
+        return " ".join(x for x in (said, fw) if x)
 
     # --- tools
     def api_fn(self, tool, body, required, desc="", retries=0, pre="", post="", name=None):

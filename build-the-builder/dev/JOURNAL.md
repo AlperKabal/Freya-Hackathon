@@ -182,3 +182,7 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
 
 Lesson: in a multi-agent pipeline, an "authoritative" agent's output must be validated before it overrides another
 agent's output; and an auditor without a checklist tends to approve.
+| 3 (A) / 3 (A+B), parallel | 122 s / 143 s | 3 / 3 | both valid, lint + snippets pass | `human_request.say` fixed (first_response holds the question). A+B: multi_product, notes, outcomes.multi, product-scope paid/dispute with notes, hardship decline note: all match the reference. Opening still used "recorded" in A but not in A+B (same prompt, different result). Fix: code finds claim words in pre-success sentences and a small Reworder call rewrites only that sentence (6 s) |
+
+- Tooling lesson: writing Python source from a Python heredoc turned `\b` into a backspace character, so a regex
+  silently never matched. Check generated regexes with a positive and a negative example.

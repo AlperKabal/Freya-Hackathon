@@ -7,7 +7,7 @@ SPECs go back to the Reader with the errors (at most twice); then the Auditor, w
 SPEC against the brief rule by rule; its findings get one repair round, which is kept only if it still validates.
 The prompts describe mechanisms and the SPEC format. They contain no content from any brief.
 """
-import asyncio, copy, json
+import asyncio, copy, json, re
 
 from builder import spec_schema as S
 from builder.llm import ask_json
@@ -126,6 +126,29 @@ def _shape_ok(value, schema_part):
     return not errs
 
 
+# Sentences spoken before anything is saved, and words a literal judge can read as "it was saved".
+PRE_SUCCESS = [("opening", "first_sentence"), ("opening", "confirm_question"), ("recording", "retry_say"), ("negotiation", "first_ask"), ("confirmation", "question")]
+CLAIM_WORDS = re.compile(r"\b(recorded|saved|booked|registered|logged)\b", re.I)
+
+REWORDER = COMMON + """
+You reword ONE sentence that a phone agent says before anything has been saved. Keep every element and its meaning;
+only replace words that a listener could take as a claim that something was recorded, saved or booked (use a present-tense verb instead of a past participle, for example).
+Reply: {"sentence": "..."}"""
+
+
+async def reword_pre_success(spec, trace=None):
+    """Code finds the risky sentences; the model only rewrites those, one small call each, in parallel."""
+    todo = [(a, b) for a, b in PRE_SUCCESS if isinstance(spec.get(a, {}).get(b), str) and CLAIM_WORDS.search(spec[a][b])]
+    async def one(a, b):
+        r = await ask_json(REWORDER, f"Sentence: {spec[a][b]}", f"Reworder: {a}.{b} before any save", trace)
+        new = r.get("sentence") if isinstance(r, dict) else None
+        if isinstance(new, str) and new.strip() and not CLAIM_WORDS.search(new):
+            if trace: trace.event("spec", f"reworded {a}.{b}: {spec[a][b]!r} -> {new!r}")
+            spec[a][b] = new.strip()
+    await asyncio.gather(*(one(a, b) for a, b in todo))
+    return spec
+
+
 def merge_binding(spec, b):
     """The Binder is authoritative for names that come from the tool API, but only for parts that have the right
     shape: a malformed Binder answer must never overwrite a good Reader answer."""
@@ -174,6 +197,7 @@ async def extract(docs, tools, trace=None, max_repairs=2):
         errs = S.validate(spec, tools)
     if errs:
         return spec, dict(report, errors=errs)
+    spec = await reword_pre_success(spec, trace)
 
     audit = await ask_json(AUDITOR, f"{guide}\n\nTOOL API FILE (parsed):\n{api}\n\nTHE BANK'S DOCUMENTS:\n{text}\n\nTHE SPEC TO CHECK:\n{json.dumps(spec, indent=1)}",
                            "Auditor: SPEC vs documents, rule by rule", trace)
