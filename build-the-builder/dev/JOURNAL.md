@@ -213,3 +213,20 @@ and a CSV code list. Extraction (125 s, 4 calls): **all three memo overrides app
 days, holiday 2026-11-11 removed and 2026-10-30 added, callback window 09:00-18:00), the unchanged early band kept,
 the CSV became the outcome table exactly, every override recorded in `free_rules` with both quotes, and the Reworder
 fixed "this call is recorded". Lint and snippet runs pass.
+
+### Reps-3 and the first orchestrated runs (2026-10-10, ~19:00-20:00 UTC)
+
+| Time (UTC) | Workflow / version | Brief | Style | Reps | Score | Failed cases | Cause |
+|---|---|---|---|---|---|---|---|
+| ~18:40 | `yasar-extract-a` v3 (v1 mode) | A | none | 1 | **10/10** | - | second 10/10 in a row |
+| ~18:40 | `yasar-extract-ab` v3 (v1 mode) | B | none | 1 | 2/3 | PUB-12 | model made a second offer on the early-band car loan |
+| ~19:00-19:15 | `yasar-extract-ab` v3 (v1 mode) | B | none | **3** | **2/3** (PUB-11 3/3, PUB-12 0/3, PUB-13 3/3) | PUB-12 | same cause in every run: systematic |
+| ~19:30 | `yasar-orch-ab` v1 (orch mode) | B | none | 1 | 0/3 | all | agent silent after "yes": record node had `on_enter: silent` |
+| ~19:40 | `yasar-orch-a` v1 (orch mode) | A | none | 1 | 5/10 | every promise case | same: silent record node; median "slowest turn" 61 s = customers waiting, then hanging up |
+
+- **A node entered with `on_enter: silent` does not speak or call a tool in that turn.** The negotiation state
+  machine itself worked on the platform (accept -> read-back -> confirm -> record decided correctly). The hop
+  experiment had passed only because it re-entered the same node whose `on_enter` was first-entry-only. Fix: the
+  record node uses `on_enter: llm`.
+- Writing `''` to an enum extraction variable from code is rejected (`validation_errors`); the turn-number guard
+  (`negotiate.total_turns`) is what prevents double processing.
