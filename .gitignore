@@ -1,0 +1,14 @@
+# Secrets and local state (never commit)
+env.sh
+.env
+.freya-agents.json
+.personas.json
+
+# Run output
+results/
+out/
+traces/dev-*
+
+# Python
+__pycache__/
+*.pyc
