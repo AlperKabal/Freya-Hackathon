@@ -22,6 +22,7 @@ def main(argv=None):
     ap.add_argument("--slot", required=True)
     ap.add_argument("--spec", help="use this SPEC file instead of extracting one")
     ap.add_argument("--no-save", action="store_true", help="stop after the local checks")
+    ap.add_argument("--mode", choices=["v1", "orch"], default="v1", help="v1: one LLM negotiation node; orch: code decides every offer")
     ap.add_argument("--out", default=str(KIT / "out"))
     a = ap.parse_args(argv)
     api_path = next((f for f in reversed(a.files) if f.endswith(".json")), None)
@@ -58,11 +59,11 @@ def main(argv=None):
                         f"max products={spec['account']['max_products']}, notes={'on' if spec['notes']['enabled'] else 'off'}, "
                         f"holidays={len(spec['calendar']['holidays'])}")
 
-        wf = generate.build(spec, tools)
+        wf = generate.build(spec, tools, a.mode)
         wf_path = out / f"{a.slot}.workflow.json"
         wf_path.write_text(json.dumps(wf, indent=1, ensure_ascii=False), encoding="utf-8")
         n_tools = sum(len(n.get("tools") or []) for n in wf["nodes"].values()) + len(wf.get("tools") or [])
-        t.event("generate", f"{len(wf['nodes'])} nodes, {n_tools} tools -> {wf_path.relative_to(KIT)}")
+        t.event("generate", f"mode {a.mode}: {len(wf['nodes'])} nodes, {n_tools} tools -> {wf_path.relative_to(KIT)}")
 
         problems = verify.lint(wf, spec, tools)
         for p in problems: t.event("lint", p)
