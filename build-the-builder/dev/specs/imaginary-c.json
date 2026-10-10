@@ -1,0 +1,158 @@
+{
+ "spec_version": 1,
+ "meta": {"bank_name": "Northwind Business Bank", "language": "English", "sources": ["dev/specs/imaginary-c.md", "dev/specs/imaginary-c.openapi.json"]},
+ "call_variables": [
+  {"name": "account_ref", "role": "customer_id", "meaning": "Pass it to every tool call."},
+  {"name": "company_name", "role": "address", "meaning": "The business that owes the money."},
+  {"name": "contact_name", "role": "address", "meaning": "The person to ask for, by full name."},
+  {"name": "today", "role": "now", "meaning": "The current date and time."}
+ ],
+ "addressing": "{contact_name}",
+ "tool_fields": {
+  "customer_id": "account_ref",
+  "verify_identity": {"field": "question", "answer": "value"},
+  "create_promise": {"product_id": "product_id", "amount": "sum", "date": "date"},
+  "add_note": {"product_id": "product_id", "reason": "reason", "text": "text"},
+  "schedule_callback": {"date": "date", "time": "hour"},
+  "transfer_to_agent": {"queue": "queue"},
+  "close_call": {"outcome": "outcome", "reason": "reason"}
+ },
+ "agent": {"self_description": "the automated assistant of Northwind Business Bank", "style_rules": []},
+ "opening": {
+  "first_sentence": "Good morning, this is the automated assistant of Northwind Business Bank. This call may be recorded.",
+  "confirm_question": "May I speak with {contact_name} from {company_name}?",
+  "forbidden_before_identity": ["arrears", "overdue", "debt"],
+  "confirmations": ["yes", "the contact's name"],
+  "non_confirmations": [],
+  "max_asks": 3,
+  "answer_question_first": false,
+  "unclear": {"outcome": "no_contact", "reason": "unconfirmed"}
+ },
+ "third_party": {
+  "enabled": true,
+  "instructions": ["Do not say why you are calling.", "Ask when the contact can be reached."],
+  "callback": {
+   "enabled": true, "include_today": false, "business_days_ahead": 2,
+   "window_start": "09:00", "window_end": "17:30", "inclusive": true, "after_now": true,
+   "max_asks": 2,
+   "scheduled": {"outcome": "no_contact", "reason": "callback_booked"},
+   "not_scheduled": {"outcome": "no_contact", "reason": "callback_refused"}
+  }
+ },
+ "identity": {
+  "questions": [
+   {"field": "company_number", "ask": "Could you tell me the company registration number?", "value_type": "digits", "answer_format": "digits only", "conversion": "Remove spaces and dashes."},
+   {"field": "founded_year", "ask": "In which year was the company founded?", "value_type": "year", "answer_format": "YYYY", "conversion": "Four-digit year."}
+  ],
+  "one_at_a_time": true,
+  "max_wrong_total": 2,
+  "wrong_may_retry": true,
+  "hints": [{"value": "digits_transposed", "instruction": "Ask the contact to read the number again slowly.", "counts_as_wrong": false}],
+  "on_failed": {"say": "I am sorry, I cannot continue without verification.", "outcome": "unverified", "reason": "wrong_answers"},
+  "decline": {"explanation": "", "max_declines": 1, "purpose_question_counts": false, "outcome": "unverified", "reason": "refused_security"},
+  "result_fields": {"ok": "ok", "verified": "match", "all_verified": "complete", "wrong_left": "remaining_attempts", "hint": "hint"}
+ },
+ "account": {
+  "products_field": "products",
+  "product_fields": {"id": "product_id", "type": "type", "past_due": "overdue_amount", "days_late": "days_overdue"},
+  "product_types": [
+   {"type": "business_loan", "spoken_name": "business loan", "floor_field": "min_due"},
+   {"type": "overdraft", "spoken_name": "overdraft", "floor_field": "min_due"},
+   {"type": "equipment_lease", "spoken_name": "equipment lease ending {lease_ref}", "floor_field": "lease_rate"}
+  ],
+  "max_products": 3,
+  "statement_intro": "I am calling about overdue payments on your business accounts.",
+  "statement_per_product": "Your {spoken_name} is {days_late} days overdue with {past_due} outstanding."
+ },
+ "calendar": {"business_weekdays": [0, 1, 2, 3, 4, 5], "holidays": ["2027-01-06", "2027-04-23"]},
+ "bands": [
+  {"name": "band_1", "days_late_min": 1, "days_late_max": 10, "deadline": {"kind": "nth_calendar_day_after_today", "n": 15, "roll": "next_business_day"}, "attempts": 1,
+   "ladder": [{"attempt": 1, "date": {"kind": "last_business_day_of_month", "month_offset": 0}, "amount": {"kind": "full"}}]},
+  {"name": "band_2", "days_late_min": 11, "days_late_max": 30, "deadline": {"kind": "nth_business_day_after_today", "n": 10}, "attempts": 2,
+   "ladder": [{"attempt": 1, "date": {"kind": "last_business_day_of_month", "month_offset": 0}, "amount": {"kind": "full"}},
+              {"attempt": 2, "date": {"kind": "deadline"}, "amount": {"kind": "floor"}}]},
+  {"name": "band_3", "days_late_min": 31, "days_late_max": 90, "deadline": {"kind": "nth_business_day_after_today", "n": 5}, "attempts": 3,
+   "ladder": [{"attempt": 1, "date": {"kind": "last_business_day_of_month", "month_offset": 0}, "amount": {"kind": "full"}},
+              {"attempt": 2, "date": {"kind": "deadline"}, "amount": {"kind": "floor"}},
+              {"attempt": 3, "date": {"kind": "deadline"}, "amount": {"kind": "percent_of_full", "percent": 50}}]}
+ ],
+ "dates": {
+  "earliest": {"kind": "today"},
+  "business_day_only": true,
+  "non_business_day": "offer_next_business_day",
+  "after_deadline": "offer_deadline",
+  "refused_deadline_is_flat_refusal": true,
+  "vague": {"examples": [], "ask_exact_times": 1, "then": "propose_deadline"},
+  "relative_weekday": {"next": "upcoming", "this": "current_week"}
+ },
+ "amounts": {
+  "first_offer": {"kind": "full"},
+  "never_ask_open_amount": false,
+  "accept_min": {"kind": "floor"},
+  "accept_max": {"kind": "full"},
+  "too_much": {"offer": {"kind": "floor"}, "times": 1, "say": "", "refused_is_flat_refusal": true},
+  "below_min": {"say": "", "offer": {"kind": "floor"}, "times": 1, "refused_is_flat_refusal": true}
+ },
+ "negotiation": {
+  "first_ask": "Can the business settle this today?",
+  "proposal_never_refusal": true,
+  "flat_refusal_definition": "A no with no date and no amount.",
+  "attempts_exhausted": {"outcome": "no_agreement", "reason": "declined", "note_reason": "declined"},
+  "forbidden_offers": [],
+  "forbidden_questions": []
+ },
+ "confirmation": {
+  "read_back": ["product", "amount", "date"], "question": "Is that correct?", "require_clear_yes": true,
+  "on_change": "revalidate_and_read_back", "one_promise_per_product": true, "after_record_change_say": ""
+ },
+ "recording": {
+  "max_attempts": 2, "success_field": "ok",
+  "after_success_say": "",
+  "retry_say": "One moment, let me try that again.",
+  "failure_say": "I am sorry, our system could not take the agreement.",
+  "on_final_failure": {"outcome": "no_agreement", "reason": "system_error", "note_reason": "system_error"}
+ },
+ "situations": [
+  {"id": "business_closed", "trigger": "The person says the business has closed down.", "not_this": "",
+   "stages": ["opening", "third_party"], "say": "", "say_exact": false, "first_response": "", "threshold": 1,
+   "suppresses_persuasion": true, "priority": 90, "proposal_still_handled": false, "scope": "call",
+   "effect": {"actions": [], "outcome": "no_contact", "reason": "business_closed"}, "source": "C6"},
+  {"id": "insolvency", "trigger": "The contact says the business is insolvent or in administration.", "not_this": "",
+   "stages": ["negotiation", "confirmation"], "say": "Do not negotiate.", "say_exact": false, "first_response": "", "threshold": 1,
+   "suppresses_persuasion": true, "priority": 80, "proposal_still_handled": false, "scope": "call",
+   "effect": {"actions": [{"type": "transfer", "queue": "specialist"}], "outcome": "escalated", "reason": "insolvency"}, "source": "C12"},
+  {"id": "manager", "trigger": "The contact wants their account manager.", "not_this": "",
+   "stages": ["identity", "negotiation", "confirmation"], "say": "", "say_exact": false, "first_response": "", "threshold": 1,
+   "suppresses_persuasion": true, "priority": 70, "proposal_still_handled": false, "scope": "call",
+   "effect": {"actions": [{"type": "transfer", "queue": "account_manager"}], "outcome": "escalated", "reason": "manager_request"}, "source": "C13"},
+  {"id": "settled", "trigger": "The contact says this amount is already settled.", "not_this": "",
+   "stages": ["negotiation", "confirmation"], "say": "It can take two business days to show.", "say_exact": true, "first_response": "", "threshold": 1,
+   "suppresses_persuasion": true, "priority": 50, "proposal_still_handled": false, "scope": "product",
+   "effect": {"actions": [{"type": "note", "note_reason": "settled"}], "outcome": "settled", "reason": ""}, "source": "C14"}
+ ],
+ "faq": [],
+ "multi_product": {
+  "enabled": true, "state_all_first": true, "ask_all_today_once": true, "first_ask_all": "Can the business settle all of them today?",
+  "order": "as_returned", "attempts_per_product": true, "one_date_clamped_per_product": true, "single_read_back": true,
+  "unrecorded_on_transfer": "drop"
+ },
+ "notes": {"enabled": true, "for_each_product_without_promise": true, "reasons": ["declined", "contested", "settled", "system_error"], "on_transfer": "none"},
+ "outcomes": {
+  "table": [
+   {"outcome": "agreed", "reasons": [], "when": "an agreement was recorded"},
+   {"outcome": "settled", "reasons": [], "when": "C14"},
+   {"outcome": "escalated", "reasons": ["insolvency", "manager_request"], "when": "C12, C13"},
+   {"outcome": "no_agreement", "reasons": ["declined", "contested", "system_error"], "when": "no agreement"},
+   {"outcome": "unverified", "reasons": ["wrong_answers", "refused_security"], "when": "C7"},
+   {"outcome": "no_contact", "reasons": ["unconfirmed", "callback_booked", "callback_refused", "business_closed"], "when": "C3, C5, C6"}
+  ],
+  "reason_omitted_for": ["agreed", "settled"],
+  "promise": {"outcome": "agreed", "reason": ""},
+  "transfer_after_promise": "transfer_wins",
+  "multi": {"all_notes_match": {"note_reason": "settled", "outcome": "settled", "reason": ""},
+            "otherwise": {"outcome": "no_agreement", "reason_from": "first_note_not_matching"}}
+ },
+ "closing": {"farewell": "Thank you, goodbye."},
+ "free_rules": [],
+ "rule_map": []
+}

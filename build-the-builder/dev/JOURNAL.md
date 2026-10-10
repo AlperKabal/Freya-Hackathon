@@ -9,6 +9,12 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
 | 2026-10-10 | Branch `yasar/hybrid-builder` created from `main` (68398a9) | Own branch, teammate works in parallel |
 | 2026-10-10 | `.gitignore` at repo root (not inside `build-the-builder/`) | Patterns without a leading slash cover the whole repo |
 | 2026-10-10 | New code goes to `build-the-builder/builder/`, dev tools to `build-the-builder/dev/` | Kit files stay unchanged; `run_cases.py` resolves paths relative to the kit folder |
+| 2026-10-10 | Phase 1: rule matrix in `dev/RULE_MATRIX.md`, mechanism ladder S > C > B > T > E > H > L > P | Pick the most deterministic mechanism that can carry each rule; 3-of-3 scoring punishes model-dependent rules |
+| 2026-10-10 | Phase 2: SPEC = content, generator = mechanisms. Generic rule kinds with parameters (dates, amounts) and a situation catalogue with generic actions | A new brief's new numbers, tables or situations become SPEC data, not code changes |
+| 2026-10-10 | Tools are found by their seven fixed names; request fields through `spec.tool_fields`, response fields through `identity.result_fields` and `account.product_fields` | The README guarantees tool names but not field names |
+| 2026-10-10 | Builder stays standard library only (no pydantic, no jsonschema) for its own code | Fewer install problems on the organisers' rerun |
+| 2026-10-10 | Generality test: imaginary Brief C (business customers, 3 bands, Mon-Sat, calendar-day deadline, renamed API fields, other outcomes) fits the schema with no schema change | Evidence the schema is not shaped only by Brief A/B |
+| 2026-10-10 | `dev/check_no_brief_literals.py` before every commit; it derives brief values from the brief and API files at run time | It caught Brief A variable names in our own docstring examples |
 
 ## Freya slots (ours)
 
