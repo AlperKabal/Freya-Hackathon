@@ -44,7 +44,11 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
   `~/bin/python3` (`exec python "$@"`); Git Bash puts `~/bin` first on PATH, so `python3` now runs
   `C:\Python314\python.exe` (3.14.6). Kit files and the skill stay unchanged. Several Pythons are installed
   (3.12, 3.13, 3.14, anaconda, msys2): install packages with `python -m pip`, not bare `pip`.
-- `anthropic` and `claude_agent_sdk` are not installed yet.
+- `claude-agent-sdk` 0.2.165 is installed; `anthropic` is not.
+- **The Agent SDK works with the Claude Pro login, no API key** (2026-10-10, `dev/check_claude_login.py`): with
+  `ANTHROPIC_API_KEY` unset, a one-turn query answered on `claude-opus-5-5` in 2.5 s. `total_cost_usd` is still
+  reported (an API-price estimate, not a charge). The login's usage limits are shared with the Claude Code session
+  used for development.
 - `.claude/skills/build-phone-agent/SKILL.md` was **missing from the repository** (dropped because `.claude/` is a
   hidden folder). **Restored** from the organisers' `build-the-builder-v3.zip`; every other file in the zip is
   identical to the repo (line endings ignored). The skill saves under slot `<brief file name>` (e.g. `brief-a`),
@@ -75,6 +79,9 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
 - `dev/show_call.py` works on real calls (PUB-02, PUB-08).
 
 ## Open questions
+
+- Builder LLM calls: the plain `anthropic` Messages API needs an API key; the Agent SDK `query()` also works with
+  a Claude login. Decide in Phase 4 whether `extract.py` calls the model through the SDK (works with both).
 
 - Example builder: score, build time, cost on Brief A (blocked on the missing skill file).
 - `docs/workflow-format.md` says "no `null` values", but `examples/base-agent.json` contains
