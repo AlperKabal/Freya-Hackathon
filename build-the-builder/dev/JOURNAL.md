@@ -230,3 +230,14 @@ fixed "this call is recorded". Lint and snippet runs pass.
   record node uses `on_enter: llm`.
 - Writing `''` to an enum extraction variable from code is rejected (`validation_errors`); the turn-number guard
   (`negotiate.total_turns`) is what prevents double processing.
+| ~19:15-20:00 | `yasar-extract-a` v3 (v1 mode, SPEC extracted by the builder) | A | none | **3** | **10/10** (every case 3/3) | - | the submittable baseline |
+| ~20:00 | `yasar-orch-ab` v2 (orch, record speaks on entry) | B | none | 1 | 2/3 | PUB-12 | code decided right; the MODEL said a different offer than SAY NOW and the customer's "yes" went to the wrong product |
+| ~20:10 | `yasar-orch-a` v2 | A | none | 1 | 9/10 | PUB-04 | code read back the deadline; the model said the attempt-1 date from FACTS and passed that date to create_promise; it also said "recorded" before the tool result |
+
+- **v1 baseline under the final rule: A 10/10 at 3 of 3, B 2/3 (PUB-12 0/3) = 12/13.**
+- Orchestrator lesson: deciding in code is not enough while the model still SPEAKS and FILLS the tool arguments.
+- Experiment `dev/exp_engine.py` (simulation, `results/exp-engine.txt`): **X2** a conversation node with
+  `on_enter: tts {{say_text}}` (not first-entry-only) speaks the new text exactly on every re-entry and nothing else;
+  **X4** an engine-run `create_promise` (api_request) with amount and date baked from code variables records the
+  amount as a number; **X5** a `pre_process_code` on a pre_actions api_call runs (it can write variables).
+  Consequence: orchestrator v3 speaks by TTS and records by engine-run calls; the model only answers questions.
