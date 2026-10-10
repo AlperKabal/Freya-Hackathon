@@ -172,3 +172,13 @@ Branch owner: Yaşar. Plan and rules: `dev/DEV_AGENT_PROMPT.md`. Workflow slots 
   offer ..."), per product, from `check_promise_date`.
 - All three fixes use only mechanisms already seen working (on_enter llm on entry, tool-call transitions, enum +
   equals). None depends on the unverified loop assumptions X1-X3.
+
+### Phase 4: extraction runs (Brief A, local, Claude Pro login, claude-opus-5-5)
+
+| Run | Time | Calls | Result | Cause / note |
+|---|---|---|---|---|
+| 1 | 242 s | 4 | invalid SPEC (13 errors after 2 repairs) | Binder returned call_variables as strings and tool_fields as lists; merge_binding treated the Binder as authoritative and overwrote the Reader's correct values after every repair. Fix: Binder shapes from the schema; a Binder part is merged only if it validates |
+| 2 | 121 s | 3 | valid, lint + 36-day snippets pass | calendar, bands, dates, tool_fields, notes identical to the hand-written SPEC; 50 rule_map rows cover all 47 rules. Issues: `human_request.say` held the first-response question (would be spoken after the transfer); opening sentence used "recorded" (judge-literal risk seen in the example builder's PUB-10). Auditor answered `{"issues": []}` in 15 s: too shallow. Fixes: say = spoken when the effect happens; generic honesty wording rule; Auditor gets a concrete checklist |
+
+Lesson: in a multi-agent pipeline, an "authoritative" agent's output must be validated before it overrides another
+agent's output; and an auditor without a checklist tends to approve.
