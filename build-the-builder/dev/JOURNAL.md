@@ -577,3 +577,47 @@ text. System prompt, the other node prompts, transitions and tool definitions ar
    allows, then the rest.
 6. The last resort has never spoken on the platform: `BUILD_BUDGET_S=1 python builder/build.py briefs/brief-a.md
    tools/openapi.json --slot yasar-exp-minimal` builds it on purpose; run the practice customers on it once.
+
+### Tuning round from the practice runs of 11 October (~08:00-09:00 UTC, both modes, builds of `7bdf964`)
+
+| Time (UTC) | Agent / mode | Brief | Reps | Score | Failed | Cause |
+|---|---|---|---|---|---|---|
+| 08:07 | `f0f76ac4` v1 | B | 1 | 3/3 | - | |
+| 08:10 | `f0f76ac4` v1 | B | 1 | 2/3 | PUB-12 | model made a second offer (46.00) on the early-band car loan after a flat no; systematic in v1 (4 of 5 runs) |
+| 08:15 | `8cfaf7c8` orch | B | 1 | 3/3 | - | |
+| 08:18 | `9d9d0eda` v1 | A | 1 | 7/10 + 1 inconclusive | PUB-07, PUB-09 (PUB-05 judge inconclusive) | see below |
+| 08:52 | `9abb796e` orch | A | 1 | 9/10 | PUB-06 | see below |
+
+Calls read one by one (`GET /api/v2/call/<id>`); causes and fixes, all generic:
+
+- **v1 PUB-07, 30 failed identity checks: a platform failure that fed itself.** The first `verify_identity`
+  pre-hook run failed with `Failed to parse sandbox result JSON: Unterminated string ... (char 9971)`: the sandbox
+  output was cut (the variables were about 5 KB, the same size as in calls where the same hook worked, so this
+  looks like a one-off platform cut, not a size limit of ours). The platform then stored its error message, which
+  quotes the output with the result marker `__CODE_EXEC` `_RESULT__`, in `verify_identity_response.message`. Every
+  later sandbox run prints all variables, so its output holds the marker twice; the platform splits on the wrong
+  one and fails with `Expecting property name enclosed in double quotes: line 1 column 2` (the text after the
+  marker inside a JSON string starts with `{\"`). That repeated for the rest of the call. Fix: every code node
+  (`codegen.embed`) and every hook (`codegen.scrubbed`, used by `api_fn` and `minimal.py`) first replaces the
+  marker in any variable. A one-off cut now costs one retry, not the call.
+- **v1 PUB-09, "I cannot pay this amount. I want lower instalments." four times, no transfer.** The look-alike
+  guard ("a plain no, saying they cannot pay ... is NOT this"), repeated in every situation of the v1 prompt and
+  in each exit's description, won over the explicit request. orch passed it (the evidence check in code saw the
+  words). Fix: the guard now says that a message that ALSO asks for the situation in so many words IS that
+  situation, even if it says they cannot pay, and names the SPEC's evidence words as examples when there are
+  any; the v1 situation list and the orch classifier say the same. The agent of this run was built from an
+  older SPEC without `evidence_words`, so the rule must and does work without them.
+- **orch PUB-06, "How much is the minimum payment?"**: `negotiate_q` answered "The minimum payment is 637.50"
+  and then said the open offer again with its date; the judge counted two offers of the floor. Fix: after
+  answering a question about the offer that was the agent's last sentence, the state machine says only
+  "Does that work for you?"; the answer instruction says to state an amount or day already offered as a fact,
+  not as a new offer. A question after another sentence (for example "On which day ...?") still repeats that.
+- **Open findings from the first review, fixed now**: a self-correction in an amount ("150, no actually 200",
+  "two hundred, sorry, two fifty") keeps the last amount; a no to today said after the day ("right now I can't,
+  maybe Friday") is not today.
+- **Not changed: v1 PUB-12.** The facts and rule D already forbid the second offer; the model counts attempts.
+  orch decides attempts in code and passed PUB-12 in every orch run so far. Reason to prefer orch.
+- **Latency (orch)**: most of a slow turn is the extraction call (3 to 17 s in PUB-06), not code (0.3 to 3 s).
+  The `reply_kind` description is long (every situation's trigger and look-alikes). Not changed this round.
+
+New: `dev/test_tuning.py` (the four fixes, on brief-a, brief-ab and imaginary-c, both modes). All suites pass.

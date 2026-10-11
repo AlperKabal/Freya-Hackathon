@@ -89,7 +89,7 @@ def _tool(name, spec, cid, cid_var):
                          "parameters": {"type": "object", "properties": {
                              "url": {"type": "string", "default": spec["url"]}, "method": {"type": "string", "default": spec["method"]}, "headers": HDR,
                              "body": {"type": "object", "required": [r for r in spec["required"] if r != cid], "properties": props}}}},
-            "post_process_code": POST}
+            "post_process_code": codegen.scrubbed(POST)}
 
 
 def build(docs, tools):
@@ -141,7 +141,7 @@ def build(docs, tools):
                                        "parameters": {"type": "object", "properties": {
                                            "url": {"type": "string", "default": close["url"]}, "method": {"type": "string", "default": close["method"]}, "headers": HDR,
                                            "body": {"type": "object", "required": [out_field] if out_field else [], "properties": body}}}},
-                          "pre_process_code": pre})
+                          "pre_process_code": codegen.scrubbed(pre)})
     system = ("You are a bank's phone agent on an outbound call. Speak the language of the specification below. Every turn is one or two short spoken "
               "sentences, no lists, no markdown. The specification is the bank's own documents, in order; where a later document changes a rule of an "
               "earlier one, the later one wins.\n\nSPECIFICATION\n" + text)

@@ -291,7 +291,8 @@ check("a turn without an extracted kind: no transfer, the offer is said again", 
 # the evidence words never raise a reply INTO a situation, and the other kinds are untouched
 c = Call(SPEC_A, PUB10)
 check("a question that happens to hold an evidence word stays a question", (c.say("question", "Is that the plan?"), c.transfers(), c.v["say_instr"]),
-      ("negotiate_q", [], "Answer the customer question in one short sentence, using only the facts given."))
+      ("negotiate_q", [], "Answer the customer question in one short sentence, using only the facts given. If it is about an amount or a day you already offered, "
+                          "state it as a fact (for example: that is the amount I mentioned) and do not offer it again."))
 c = Call(SPEC_A, PUB10)
 check("a situation without evidence words is acted on as before", c.say("hardship", "I lost my job last month."), "offer_hardship")
 c = Call(SPEC_A, PUB10)

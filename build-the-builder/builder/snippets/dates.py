@@ -205,7 +205,9 @@ _CORRECTION = r"\b(?:no wait|wait|sorry|actually|i mean|make that|rather|scratch
 _NOW = r"(?:today|tonight|right now|now|this (?:morning|afternoon|evening))"
 # "not today", "I can't pay right now", "cannot do it today": a no to today, not a day (apostrophes became spaces)
 _NEG_NOW = [r"\b(?:not|never|can t|cannot|cant|couldn t|won t|wont|don t|unable to)\b(?: [a-z]+){0,4}? " + _NOW + r"\b",
-            r"\b(?:today|now)\b (?:is not|isn t|doesn t|does not|won t|will not|is no|is impossible|is bad)\b"]
+            r"\b(?:today|now)\b (?:is not|isn t|doesn t|does not|won t|will not|is no|is impossible|is bad)\b",
+            # the no after the day: "right now I can't, maybe Friday", "today we cannot"
+            r"\b(?:right now|today|now)\b(?: [a-z]+){0,2}? (?:i |we )?(?:can t|cannot|cant|couldn t|won t|wont|don t|am not able|m not able)\b"]
 
 
 def _resolve(t, today, cfg):

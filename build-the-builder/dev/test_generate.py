@@ -69,7 +69,7 @@ for spec_name in ("brief-a", "brief-ab"):
         check(f"{tag} explanation from the SPEC in the prompt", spec["identity"]["decline"]["explanation"] in idn["task_message"], True)
 
         # look-alike guard on situations that end or transfer the call
-        g = generate.Gen.guard
+        g = generate.Gen(spec, tools, mode).guard
         by_id = {x["id"]: x for x in spec["situations"]}
         for sid, want in (("restructuring_request", True), ("human_request", True), ("hardship", False), ("already_paid", False)):
             if sid in by_id:

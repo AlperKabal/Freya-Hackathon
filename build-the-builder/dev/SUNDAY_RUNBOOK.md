@@ -23,6 +23,7 @@ python dev/test_properties.py | tail -1    # all good
 python dev/test_scenarios.py | tail -1     # all good
 python dev/test_mutations.py | tail -1     # all good
 python dev/test_generate.py | tail -1      # all good (about 2 minutes)
+python dev/test_tuning.py | tail -1        # all good
 python dev/check_no_brief_literals.py | tail -1   # clean
 ```
 

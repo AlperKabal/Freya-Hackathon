@@ -65,7 +65,22 @@ def _chunks(head):
     return out
 
 
+# words that start a self-correction: the amount named after the last one wins ("150, no actually 200" -> 200)
+_AMOUNT_CORRECTION = r"\b(?:no wait|wait|sorry|actually|i mean|make that|rather|scratch that|correction)\b"
+
+
 def parse_amount(text, rng=None):
+    """Like _parse_amount, but a self-correction keeps the last amount named: 'two hundred, sorry, two fifty' -> 250."""
+    parts = _re.split(_AMOUNT_CORRECTION, str(text or "").lower())
+    if len(parts) > 1:
+        for seg in reversed(parts):
+            v = _parse_amount(seg, rng)
+            if v is not None:
+                return v
+    return _parse_amount(text, rng)
+
+
+def _parse_amount(text, rng=None):
     """'four hundred and fifty-five' -> 455.0, '153.50' -> 153.5, '1,320' -> 1320.0, 'one twenty five' -> 125.0,
     '637 pounds 50' -> 637.5, 'on the 16th I can pay 200' -> 200.0, '... dollars and twenty cents' -> +0.20.
     A spoken pair like 'twelve fifty' is 1250 or 12.50: `rng` (lowest, highest plausible amount) picks the reading
@@ -145,6 +160,10 @@ def situation_confirmed(kind, said, state, words):
     weak = state.setdefault("weak", dict())
     weak[kind] = int(weak.get(kind, 0)) + 1
     return weak[kind] >= 2
+
+
+# said after answering a question about the offer that is still open
+RE_ASK = "Does that work for you?"
 
 
 def _answer_first(say, nxt):
@@ -375,7 +394,10 @@ def step(state, ev, plan, today, cfg):
     state['err'] (the code node writes it to vars['neg_error'], so a silent loop shows in the transcript)."""
     try:
         state.pop("err", None)
-        return _step(state, ev, plan, today, cfg)
+        state, say, nxt = _step(state, ev, plan, today, cfg)
+        if say:
+            state["last_say"] = say[len("ASK_FIRST: "):] if say.startswith("ASK_FIRST: ") else say
+        return state, say, nxt
     except Exception as e:
         try:
             state["err"] = (type(e).__name__ + ": " + str(e))[:200]
@@ -545,4 +567,11 @@ def _on_product(state, kind, day, amount, plan, today, cfg):
         else:
             say, nxt = _offer_text(pp, x, cfg), "talk"
         return state, _answer_first(say, nxt), nxt
-    return state, ("ASK_FIRST: " if kind == "question" else "") + _offer_text(pp, x, cfg), "talk"
+    if kind == "question":
+        # when the agent's last sentence was this product's open offer, it is not said again after the answer, so a
+        # question about it ("how much is the minimum?") never reads as a second offer (a literal judge counts each one)
+        last = str(state.get("last_say") or "")
+        if last and (last == RE_ASK or ((money(x["offer_amt"]) in last or "that payment" in last) and _day(pp, x["offer_date"]) in last)):
+            return state, "ASK_FIRST: " + RE_ASK, "talk"
+        return state, "ASK_FIRST: " + _offer_text(pp, x, cfg), "talk"
+    return state, _offer_text(pp, x, cfg), "talk"

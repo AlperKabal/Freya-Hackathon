@@ -119,8 +119,8 @@ class Gen:
                                "headers": HDR,
                                "body": {"type": "object", "required": required, "properties": props}}}}}
         if desc: fn["function"]["description"] = desc
-        if pre: fn["pre_process_code"] = pre
-        if post: fn["post_process_code"] = post
+        if pre: fn["pre_process_code"] = codegen.scrubbed(pre)
+        if post: fn["post_process_code"] = codegen.scrubbed(post)
         return fn
 
     def enum(self, tool, role):
@@ -405,14 +405,18 @@ vars['id_state'] = 'open'
             "max_node_turns": max(1, int(o["max_asks"])), "max_turn_transition": unclear,
             "transitions": trans}
 
-    @staticmethod
-    def guard(x):
+    def guard(self, x):
         """A call-scope situation without an offer ends or transfers the call, which cannot be undone in the call:
-        its look-alikes (a plain no, a question about options) must not trigger it. Mechanism text, no brief content."""
+        its look-alikes (a plain no, a question about options) must not trigger it. But a message that ALSO asks for
+        it in so many words is it: "I cannot pay, I want <the thing>" is the request, not a refusal. Mechanism text,
+        no brief content (the example words come from the SPEC)."""
         if x["scope"] != "call" or x.get("offer") or not set(x["stages"]) & {"identity", "negotiation", "confirmation"}:
             return ""
+        words = self.evidence(x)
+        ex = (" (words like: " + ", ".join(f"'{w}'" for w in words[:6]) + ")") if words else ""
         return (" Only when the customer says this clearly and explicitly. A plain no, saying they cannot pay, or asking"
-                " what options or other ways there are is NOT this.")
+                " what options or other ways there are is, by itself, NOT this. But when the same message also asks for exactly this"
+                + ex + ", it IS this, even if it also says they cannot pay.")
 
     def sit_desc(self, x, guard=False):
         """A situation for a classifier or a prompt: the trigger, then what only looks like it, clearly labelled."""
@@ -836,7 +840,8 @@ except Exception:
             # a situation exit cannot be undone, so the everyday replies that only look like one are named as not being one
             others.insert(0, "Each of these applies only when the customer clearly says it. By itself, a plain no, or saying they cannot pay, is NOT one of them: the rules above handle it. "
                              "A question about what else is possible or what their options are is NOT one of them either: say in one short sentence that you cannot offer other terms, "
-                             "then go on with the rules above.")
+                             "then go on with the rules above. But when the customer's message also asks in so many words for what one of them describes, "
+                             "that one applies, even if the same message says they cannot pay; the customer does not have to repeat it.")
         free = [r["text"] for r in s["free_rules"] if set(r["applies_to"]) & {"negotiation", "confirmation", "all"}]
         for k in range(1, self.maxp + 1):
             plist = ", ".join(f"product {i} ({{{{p{i}_words}}}}: create_promise_{i}" + (f", add_note_{i}" if self.notes else "") + ")" for i in range(1, k + 1))
@@ -1037,7 +1042,8 @@ except Exception:
         if neg_sits:
             lead += (f"Special situations: {', '.join(x['id'] for x in neg_sits)}. Choose one only when that message itself clearly says what its description says; "
                      "then choose it over the other values. By itself, a plain no, saying they cannot pay, or asking what else is possible or what their options are "
-                     "is NOT a special situation unless a description says so: choose one of the other values for it. ")
+                     "is NOT a special situation unless a description says so: choose one of the other values for it. "
+                     "A message that says they cannot pay AND asks in so many words for what a description says is that special situation. ")
         lead += "If the message both refuses and asks a question, choose refuse. "
         self.orch_extraction = [
             extr("reply_kind", lead + " ".join(f"{k} = {v.rstrip('.')}." for k, v in kinds.items()), enum=list(kinds)),
@@ -1099,7 +1105,8 @@ try:
             if say.startswith('ASK_FIRST: '):
                 say, nxt = say[len('ASK_FIRST: '):], 'ask'
                 instr = ('The customer asked for something you cannot offer on this call. Say so in one short sentence, without naming or describing any alternative.' if unsure
-                         else 'Answer the customer question in one short sentence, using only the facts given.')
+                         else 'Answer the customer question in one short sentence, using only the facts given. If it is about an amount or a day you already offered, '
+                              'state it as a fact (for example: that is the amount I mentioned) and do not offer it again.')
             elif nxt == 'talk' and say and str(vars.get('asks_question') or '') == 'yes':
                 # a refusal (or an answer) with a question in it: the turn is decided as usual, the question is answered too
                 nxt, instr = 'ask', 'Answer the customer question in one short sentence, using only the facts given.'
