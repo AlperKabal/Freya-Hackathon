@@ -460,7 +460,8 @@ vars['id_state'] = 'open'
         if not tp["enabled"]:
             return
         sits = [x for x in self.stage_situations("third_party") if x["threshold"] <= 1 and not x.get("offer")]
-        scheduled = self.exit("callback_scheduled", cb["scheduled"]["outcome"], cb["scheduled"]["reason"], self.farewell())
+        # a brief that books no callback has no "booked" close: a node nothing leads to would be a lint problem
+        scheduled = self.exit("callback_scheduled", cb["scheduled"]["outcome"], cb["scheduled"]["reason"], self.farewell()) if cb["enabled"] else None
         not_sched = self.exit("callback_not_scheduled", cb["not_scheduled"]["outcome"], cb["not_scheduled"]["reason"], self.farewell())
         window = self.cb_window()
         task = (f"The person on the line is NOT {self.addr()}. " + " ".join(tp["instructions"]) + " "
@@ -646,7 +647,7 @@ def _amount(rule, full, floor):
     if k == 'floor':
         return floor
     if k == 'percent_of_full':
-        return round(full * float(rule.get('percent', 100)) / 100.0, 2)
+        return int(full * float(rule.get('percent', 100)) + 0.5 + 1e-6) / 100.0        # to the cent, half a cent up
     return full
 try:
     now = parse_now(vars.get(CFG['now_var'])) or _dt.datetime.now()
@@ -685,6 +686,8 @@ try:
                     d = apply_date_rule(st['date'], today, CFG, deadline)
                     if d and d < first_day:              # an offer is never for a day before the earliest one
                         d = first_day
+                    if d and CFG.get('business_day_only', True) and not is_business_day(d, CFG):
+                        d = next_business_day(d, CFG)    # "in three days" on a Sunday: the agent's own offer is for a business day
                     if d and deadline and d > deadline:
                         d = deadline
                     k = st['amount'].get('kind')
@@ -1111,6 +1114,10 @@ try:
         else:
             st, say2, nxt = step(st, ev, plan, now.date(), CFG)
             say = say2 or say
+            if nxt == 'close' and say2:
+                # the negotiation ends on this turn and no step speaks any more: a sentence the state machine still
+                # owes the customer (a situation's prescribed words on the last open product) is said with the farewell
+                vars['close_say'] = _say(say2).strip()
             if say.startswith('ASK_FIRST: '):
                 say, nxt = say[len('ASK_FIRST: '):], 'ask'
                 instr = ('The customer asked for something you cannot offer on this call. Say so in one short sentence, without naming or describing any alternative.' if unsure
@@ -1182,7 +1189,8 @@ except Exception as e:
                                             [tr(okn, "recorded", truthy(var)), tr(fail_to, "not recorded")],
                                             mapping=[{"path": "data." + ok, "variable": var}], say=(self.ph(rec["retry_say"]) if t > 1 else ""))
             self.nodes[okn] = code_node(okn, codegen.embed({}, f"vars['res_{i}'] = 'promise'\n", snippets=()), [tr(nxt, "always")])
-            self.nodes[failn] = code_node(failn, codegen.embed({}, f"vars['res_{i}'] = 'failed'\n", snippets=()), [tr(nxt, "always")])
+            # the note that follows overwrites res_<i>: rec_failed keeps the fact for the close, so the customer is told
+            self.nodes[failn] = code_node(failn, codegen.embed({}, f"vars['res_{i}'] = 'failed'\nvars['rec_failed'] = 'yes'\n", snippets=()), [tr(nxt, "always")])
         return f"{prefix}_gate_1"
 
     def notes_by_product(self):
@@ -1303,7 +1311,7 @@ try:
             r = str(vars.get('p' + s + '_end_reason') or '') or CFG['exhausted_reason']
         reasons.append(r)
     m = CFG['multi_rule']
-    failed = any(str(vars.get('res_' + str(j))) == 'failed' for j in range(1, n + 1))
+    failed = any(str(vars.get('res_' + str(j))) == 'failed' for j in range(1, n + 1)) or str(vars.get('rec_failed') or '') == 'yes'
     if promised == 0 and failed and not m:
         vars['outcome'] = CFG['fail_outcome']['outcome']
         vars['reason'] = CFG['fail_outcome']['reason']
@@ -1326,16 +1334,39 @@ try:
         vars['reason'] = first or CFG['exhausted_reason']
         vars['farewell'] = CFG['farewell']
     else:
-        vars['outcome'] = CFG['exhausted_outcome']
-        vars['reason'] = CFG['exhausted_reason']
+        hit = None
+        for r in reasons:                        # no closing rule for several products: the first product's own ending decides
+            if r:
+                hit = CFG['by_note'].get(r)
+                break
+        vars['outcome'] = hit['outcome'] if hit else CFG['exhausted_outcome']
+        vars['reason'] = hit['reason'] if hit else CFG['exhausted_reason']
         vars['farewell'] = CFG['farewell']
+    # whatever the close: a promise that could not be saved is said, and so is a sentence the negotiation still owed
+    if failed and promised == 0 and CFG['fail_say'] and CFG['fail_say'] not in vars['farewell']:
+        vars['farewell'] = (CFG['fail_say'] + ' ' + vars['farewell']).strip()
+    owed = str(vars.get('close_say') or '').strip()
+    if owed and owed not in vars['farewell']:
+        vars['farewell'] = (owed + ' ' + vars['farewell']).strip()
 except Exception:
     vars['outcome'] = CFG['exhausted_outcome']
     vars['reason'] = CFG['exhausted_reason']
     vars['farewell'] = CFG['farewell']
 """
         ex = self.s["negotiation"]["attempts_exhausted"]
-        self.nodes["finalize"] = self.code("finalize", body, [tr("final_end", "always")], exhausted_outcome=ex["outcome"], exhausted_reason=ex["reason"],
+        # note reason -> how a call closes when a product ended for it (the situation's own close, the failed
+        # recording's, the used-up attempts'); read only when the SPEC has no closing rule for several products
+        by_note = {}
+        if self.notes:
+            for x in self.s["situations"]:
+                for eff in [x["effect"]] + ([x["offer"]["on_decline"], x["offer"]["on_accept"]] if x.get("offer") else []):
+                    for a in eff["actions"]:
+                        if a["type"] == "note" and a.get("note_reason"):
+                            by_note.setdefault(a["note_reason"], {"outcome": eff["outcome"], "reason": eff["reason"]})
+            for rule in (self.s["recording"]["on_final_failure"], ex):
+                if rule.get("note_reason"):
+                    by_note.setdefault(rule["note_reason"], {"outcome": rule["outcome"], "reason": rule["reason"]})
+        self.nodes["finalize"] = self.code("finalize", body, [tr("final_end", "always")], exhausted_outcome=ex["outcome"], exhausted_reason=ex["reason"], by_note=by_note,
                                             reason_from_state=self.notes and not self.flag("note_exhausted"),
                                             fail_outcome={"outcome": self.s["recording"]["on_final_failure"]["outcome"], "reason": self.s["recording"]["on_final_failure"]["reason"]},
                                             fail_say=self.s["recording"]["failure_say"])
