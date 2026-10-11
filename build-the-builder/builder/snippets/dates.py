@@ -3,8 +3,8 @@
 - locally, imported by the builder's tests.
 So: only json, re and datetime; no double braces anywhere; no exception may escape a public function.
 
-Config (from the SPEC, see codegen.date_config): business_weekdays, holidays, bands, earliest, non_business_day,
-after_deadline, relative_weekday, vague_examples.
+Config (from the SPEC, see codegen.date_config): business_weekdays, holidays, bands, earliest, business_day_only,
+non_business_day, after_deadline, relative_weekday, vague_examples (dev/test_dates.py checks every key read here is written).
 """
 import datetime as _dt
 import re as _re
@@ -166,13 +166,14 @@ def _month_index(name):
     return None
 
 
-def _future_day_of_month(today, day):
-    """The next date (today or later) with this day of the month."""
+def _future_day_of_month(today, day, weekday=None):
+    """The next date (today or later) with this day of the month; with a weekday ("Saturday the 28th") the next one
+    on that weekday, so the weekday tells the month."""
     y, m = today.year, today.month
-    for _ in range(13):
+    for _ in range(13 if weekday is None else 30):
         try:
             d = _dt.date(y, m, day)
-            if d >= today:
+            if d >= today and (weekday is None or d.weekday() == weekday):
                 return d
         except ValueError:
             pass
@@ -182,10 +183,39 @@ def _future_day_of_month(today, day):
 
 def resolve_spoken_date(text, today, cfg):
     """What date did the customer name? -> {"status": exact|vague|none, "date": "YYYY-MM-DD" or ""}.
-    `today` is the call's own date (from `now`), never the real clock."""
+    `today` is the call's own date (from `now`), never the real clock.
+    A self-correction ("tomorrow, no sorry, Friday") keeps the last day named; a negated today
+    ("not today", "I can't pay right now") is not a day."""
     t = " " + _re.sub(r"[^a-z0-9/\- ]", " ", str(text or "").lower()) + " "
     t = _re.sub(r"\s+", " ", t)
+    t = _re.sub(r"\b(not today|not now|can t .*? now)\b", " ", t)
     none = {"status": "none", "date": ""}
+    if not t.strip():
+        return none
+    parts = _re.split(_CORRECTION, t)
+    if len(parts) > 1:
+        for seg in reversed(parts):
+            r = _resolve(" " + seg.strip() + " ", today, cfg)
+            if r["status"] != "none":
+                return r
+    return _resolve(t, today, cfg)
+
+
+# words that start a self-correction: the day named after the last one wins
+_CORRECTION = r"\b(?:no wait|wait|sorry|actually|i mean|make that|rather|scratch that|correction)\b"
+_NOW = r"(?:today|tonight|right now|now|this (?:morning|afternoon|evening))"
+# "not today", "I can't pay right now", "cannot do it today": a no to today, not a day (apostrophes became spaces)
+_NEG_NOW = [r"\b(?:not|never|can t|cannot|cant|couldn t|won t|wont|don t|unable to)\b(?: [a-z]+){0,4}? " + _NOW + r"\b",
+            r"\b(?:today|now)\b (?:is not|isn t|doesn t|does not|won t|will not|is no|is impossible|is bad)\b",
+            # the no after the day: "right now I can't, maybe Friday", "today we cannot"
+            r"\b(?:right now|today|now)\b(?: [a-z]+){0,2}? (?:i |we )?(?:can t|cannot|cant|couldn t|won t|wont|don t|am not able|m not able)\b"]
+
+
+def _resolve(t, today, cfg):
+    none = {"status": "none", "date": ""}
+    for p in _NEG_NOW:
+        t = _re.sub(p, " ", t)
+    t = _re.sub(r"\s+", " ", t)
     if not t.strip():
         return none
     try:
@@ -198,7 +228,7 @@ def resolve_spoken_date(text, today, cfg):
             return {"status": "exact", "date": (today + _dt.timedelta(days=1)).isoformat()}
         if _re.search(r"\b(today|tonight|this (morning|afternoon|evening)|right now|now)\b", t):
             return {"status": "exact", "date": today.isoformat()}
-        m = _re.search(r"\bin (\w+(?: \w+)?) days?\b", t)
+        m = _re.search(r"\bin ([\w-]+(?: [\w-]+)?) days?\b", t)          # "in five days", "in twenty-seven days"
         if m and words_to_number(m.group(1)) is not None:
             return {"status": "exact", "date": (today + _dt.timedelta(days=words_to_number(m.group(1)))).isoformat()}
         # a day of the month, with or without a month name: "26 october", "october 26th", "the 26th", "monday the 26th"
@@ -225,16 +255,23 @@ def resolve_spoken_date(text, today, cfg):
             return {"status": "exact", "date": d.isoformat()}
         m = _re.search(r"\bthe " + _ORDNUM + r"\b", t) or _re.search(r"\bon (\d{1,2}(?:st|nd|rd|th))\b", t)
         if m and words_to_number(m.group(1)):
-            d = _future_day_of_month(today, words_to_number(m.group(1)))
+            wd = _re.search(r"\b(" + "|".join(WEEKDAYS) + r")(?: the)? " + _re.escape(m.group(1)) + r"\b", t)
+            d = _future_day_of_month(today, words_to_number(m.group(1)), WEEKDAYS.index(wd.group(1)) if wd else None)
+            if d is None and wd:                                  # no such weekday on that day in the coming months
+                d = _future_day_of_month(today, words_to_number(m.group(1)))
             if d:
                 return {"status": "exact", "date": d.isoformat()}
         # a weekday, with this / next / plain
         for i, name in enumerate(WEEKDAYS):
-            m = _re.search(rf"\b(this |next |coming |on )?{name}\b", t)
+            m = _re.search(rf"\b(this |next |coming |on )?(?:week )?{name}\b", t)
             if not m:
                 continue
             mod = (m.group(1) or "").strip()
             this_week = _monday(today) + _dt.timedelta(days=i)
+            if _re.search(rf"\bnext week (?:on )?{name}\b|\b{name} (?:of )?next week\b", t):
+                return {"status": "exact", "date": (this_week + _dt.timedelta(days=7)).isoformat()}   # always the following calendar week
+            if _re.search(rf"\bthis week (?:on )?{name}\b|\b{name} (?:of )?this week\b", t):
+                return {"status": "exact", "date": this_week.isoformat()}
             if mod == "next":
                 d = this_week + _dt.timedelta(days=7) if cfg["relative_weekday"]["next"] == "following_week" else _upcoming(today, i)
             elif mod == "this":
@@ -256,9 +293,11 @@ def _upcoming(today, weekday, include_today=False):
     return today + _dt.timedelta(days=delta)
 
 
-_VAGUE = [r"\bnext week\b", r"\bweek after next\b", r"\bend of (the )?(month|week|year)\b", r"\b(beginning|start|middle|mid) of\b",
+_VAGUE = [r"\bnext week\b", r"\bweek after next\b", r"\bend of (the )?(month|week|year|" + "|".join(MONTHS) + r")\b", r"\b(beginning|start|middle|mid) of\b",
           r"\bsalary\b", r"\bpay ?day\b", r"\b(get|getting|am|i m) paid\b", r"\bthis week\b", r"\bsoon\b", r"\blater\b", r"\bsometime\b", r"\bin a (few|couple)\b", r"\bin (two|three|a few) weeks\b",
-          r"\bnext month\b", r"\bwhen i can\b", r"\bnot sure\b"]
+          r"\bnext month\b", r"\bwhen i can\b", r"\bnot sure\b",
+          # a part of a named month, no day: "end of October", "early November", "mid October"
+          r"\b(?:end|beginning|start|middle|mid) of (?:" + "|".join(MONTHS) + r")\b", r"\b(?:early|late|mid) (?:" + "|".join(MONTHS) + r")\b"]
 
 
 def _is_vague(t, cfg):
@@ -329,6 +368,39 @@ def parse_spoken_time(text, lo=None, hi=None):
     return "%02d:%02d" % (h, m)
 
 
+def _count(token):
+    """'an' -> 1, '45' -> 45, 'forty five' -> 45; None if it is no number."""
+    return 1 if token in ("a", "an") else int(token) if token.isdigit() else words_to_number(token)
+
+
+def relative_time(text, now):
+    """A distance from now: 'in an hour', 'in half an hour', 'in two hours', 'in an hour and a half', 'in 45 minutes'
+    -> that moment (a datetime). None when the text names no such distance."""
+    t = " " + _re.sub(r"[^a-z0-9 ]", " ", str(text or "").lower().replace("-", " ")) + " "
+    t = _re.sub(r"\s+", " ", t)
+    units = "|".join(sorted(_UNITS, key=len, reverse=True))
+    num = r"(an?|\d{1,3}|(?:" + "|".join(_TENS) + r")(?: (?:" + units + r"))?|" + units + r")"
+    lead = r"\bin (?:about |around |roughly |maybe |say )?"
+    mins = None
+    if _re.search(lead + r"half an hour\b", t):
+        mins = 30
+    if mins is None:
+        m = _re.search(lead + num + r" and a half hours?\b", t)
+        if m and _count(m.group(1)) is not None:
+            mins = _count(m.group(1)) * 60 + 30
+    if mins is None:
+        m = _re.search(lead + num + r" hours?( and a half)?\b", t)
+        if m and _count(m.group(1)) is not None:
+            mins = _count(m.group(1)) * 60 + (30 if m.group(2) else 0)
+    if mins is None:
+        m = _re.search(lead + num + r" (?:minutes?|mins?)\b", t)
+        if m and _count(m.group(1)) is not None:
+            mins = _count(m.group(1))
+    if not mins or mins > 24 * 60 or now is None:
+        return None
+    return now + _dt.timedelta(minutes=mins)
+
+
 # ---------- checking a proposed promise date ----------
 
 def check_promise_date(day, today, deadline, cfg):
@@ -343,7 +415,7 @@ def check_promise_date(day, today, deadline, cfg):
         if cfg["after_deadline"] == "offer_deadline":
             return {"verdict": "offer", "date": deadline.isoformat(), "why": "after the deadline"}
         return {"verdict": "invalid", "date": "", "why": "after the deadline"}
-    if cfg["business_day_only"] and not is_business_day(day, cfg):
+    if cfg.get("business_day_only", True) and not is_business_day(day, cfg):
         if cfg["non_business_day"] == "offer_next_business_day":
             nxt = next_business_day(day, cfg)
             if deadline and nxt > deadline:

@@ -7,7 +7,7 @@ env.sh
 .personas.json
 *.zip
 hidden/
-submission/
+# submission/ is committed: the exported workflows and the selected build traces go there
 
 # Run output
 results/

@@ -62,6 +62,30 @@ for said, status, date in [
     r = D.resolve_spoken_date(said, W, A)
     check(f"A said {said!r}", (r["status"], r["date"]), (status, date))
 
+# 3b. Human phrasing (styles corrects / pieces / in_words): negated "today", self-corrections, "next week <day>",
+# vague periods named by month. now = 2026-10-14 (a Wednesday)
+for said, status, date in [
+        ("not today, Friday", "exact", "2026-10-16"), ("I can't pay right now, maybe on Friday", "exact", "2026-10-16"),
+        ("not now", "none", ""), ("not today", "none", ""), ("I cannot do it today but tomorrow is fine", "exact", "2026-10-15"),
+        ("today doesn't work, how about Monday", "exact", "2026-10-19"), ("no, I can pay today", "exact", "2026-10-14"),
+        ("tomorrow, no sorry, Friday", "exact", "2026-10-16"), ("Friday, sorry, I mean the 30th", "exact", "2026-10-30"),
+        ("Friday sorry", "exact", "2026-10-16"), ("actually make that the twenty-third", "exact", "2026-10-23"),
+        ("next week Tuesday", "exact", "2026-10-20"), ("Tuesday next week", "exact", "2026-10-20"), ("next week on Monday", "exact", "2026-10-19"),
+        ("end of October", "vague", ""), ("the end of November", "vague", ""), ("early November", "vague", ""), ("mid October", "vague", ""),
+        ("beginning of December", "vague", "")]:
+    r = D.resolve_spoken_date(said, W, A)
+    check(f"A human said {said!r}", (r["status"], r["date"]), (status, date))
+# "next week Tuesday" said on a Monday is the FOLLOWING week's Tuesday, not tomorrow
+MON = D_("2026-10-12")
+for said, date in [("next week Tuesday", "2026-10-20"), ("Tuesday next week", "2026-10-20"), ("Tuesday", "2026-10-13")]:
+    check(f"A on Mon said {said!r}", D.resolve_spoken_date(said, MON, A)["date"], date)
+
+# 3c. Every config key the date snippet reads is written by codegen.date_config (a missing key would raise inside
+# the sandbox and be swallowed by a try/except, silently)
+import re as _re
+used = set(_re.findall(r"cfg\[\"([a-z_]+)\"\]", (KIT / "builder/snippets/dates.py").read_text(encoding="utf-8")))
+check("date snippet config keys all written by date_config", sorted(used - set(A)), [])
+
 # 4. The same words on a Friday (2026-10-16): "next" is the following calendar week, "this" the current one
 F = D_("2026-10-16")
 for said, date in [("next Friday", "2026-10-23"), ("this Friday", "2026-10-16"), ("Friday", "2026-10-16"), ("tomorrow", "2026-10-17"), ("next Monday", "2026-10-19")]:
@@ -107,6 +131,17 @@ for said, want in [("tomorrow morning around eleven", "11:00"), ("around eleven"
                    ("15:30", "15:30"), ("at eleven thirty", "11:30"), ("six o'clock", "18:00"), ("noon", "12:00"), ("in the evening at seven", "19:00"),
                    ("eleven", "11:00"), ("on the 15th at eleven", "11:00"), ("sometime in the afternoon", ""), ("tomorrow", ""), ("", ""), (None, "")]:
     check(f"time {said!r}", D.parse_spoken_time(said, 600, 1140), want)
+
+# 7c. A distance from now ("in an hour"): a day and a time at once
+NOW = dt.datetime(2026, 10, 14, 11, 0)
+for said, want in [("in an hour", "2026-10-14T12:00"), ("in half an hour", "2026-10-14T11:30"), ("in about two hours", "2026-10-14T13:00"), ("in 2 hours", "2026-10-14T13:00"),
+                   ("in an hour and a half", "2026-10-14T12:30"), ("in one and a half hours", "2026-10-14T12:30"), ("in 45 minutes", "2026-10-14T11:45"),
+                   ("in forty-five minutes", "2026-10-14T11:45"), ("she is back in twenty minutes", "2026-10-14T11:20"), ("in fourteen hours", "2026-10-15T01:00"),
+                   ("in the evening at seven", None), ("in two days at ten", None), ("tomorrow morning around eleven", None), ("at three", None), ("in a while", None),
+                   ("in an hour or so", "2026-10-14T12:00"), ("in 900 hours", None), ("", None), (None, None)]:
+    got = D.relative_time(said, NOW)
+    check(f"distance {said!r}", got.strftime("%Y-%m-%dT%H:%M") if got else None, want)
+check("distance without a clock", D.relative_time("in an hour", None), None)
 
 # 8. The embedded code node: no double braces, runs with a `vars` dict like the sandbox gives it
 body = "try:\n    t = parse_now(vars.get('now')).date()\n    vars['answer'] = resolve_spoken_date(vars.get('said'), t, CFG)['date']\nexcept Exception:\n    vars['answer'] = ''\n"

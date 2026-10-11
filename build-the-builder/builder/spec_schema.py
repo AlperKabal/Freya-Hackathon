@@ -146,6 +146,7 @@ SCHEMA = {
         "attempts_exhausted": {"outcome": str, "reason": str, Opt("note_reason"): str},
         "forbidden_offers": [str],
         "forbidden_questions": [str],
+        Opt("call_attempt_limit"): int,               # attempts for the whole call (multi_product.attempts_per_product false); 0 = none given
     },
     "confirmation": {
         "read_back": [str], "question": str, "require_clear_yes": bool,
@@ -162,6 +163,7 @@ SCHEMA = {
     },
     "situations": [{
         "id": str, "trigger": str, "not_this": str,   # not_this: what looks similar but is another situation
+        Opt("evidence_words"): [str],                 # an explicit request that cannot be undone: word stems the customer's own words must contain
         "stages": [Enum(STAGES)],
         "say": str, "say_exact": bool,                # say: a sentence the agent speaks ("" if none); say_exact: the brief prescribes these words
         "guidance": str,                              # how the agent must behave here (an instruction, never spoken)
@@ -174,12 +176,17 @@ SCHEMA = {
         "source": str,
     }],
     "faq": [{"trigger": str, "answer": str, "source": str}],
+    # state_all_first false: each product is stated when it is reached; ask_all_today_once false: "today" is asked per
+    # product; attempts_per_product false: attempts count for the whole call (negotiation.call_attempt_limit);
+    # single_read_back false: each promise is read back when it is agreed
     "multi_product": {
         "enabled": bool, "state_all_first": bool, "ask_all_today_once": bool, "first_ask_all": str,
         "order": Enum(["as_returned"]), "attempts_per_product": bool,
         "one_date_clamped_per_product": bool, "single_read_back": bool,
+        Opt("one_date_rule"): str,
         "unrecorded_on_transfer": Enum(["drop", "record"]),
     },
+    # for_each_product_without_promise false: only situations that name a note write one (not used-up attempts)
     "notes": {"enabled": bool, "for_each_product_without_promise": bool, "reasons": [str], "on_transfer": Enum(["none", "add"])},
     "outcomes": {
         "table": [{"outcome": str, "reasons": [str], "when": str}],

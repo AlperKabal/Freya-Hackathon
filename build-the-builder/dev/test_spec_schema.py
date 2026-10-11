@@ -9,7 +9,8 @@ from builder.ingest import parse_openapi
 from builder.spec_schema import validate
 
 GOOD = [("dev/specs/brief-a.json", "tools/openapi.json"), ("dev/specs/brief-ab.json", "tools/openapi.json"),
-        ("dev/specs/imaginary-c.json", "dev/specs/imaginary-c.openapi.json")]
+        ("dev/specs/imaginary-c.json", "dev/specs/imaginary-c.openapi.json"),
+        ("dev/specs/imaginary-d.json", "dev/specs/imaginary-d.openapi.json")]
 
 
 def mutations(spec):
