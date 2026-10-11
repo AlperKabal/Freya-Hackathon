@@ -324,15 +324,15 @@ check("the enum text does not push a reply about the amount towards a refusal", 
 check("the guarded situation asks for the customer's own words", "Only when the customer asks for exactly this in their own words." in desc, True)
 check("no doubled full stops in the enum text", ".." in desc, False)
 check("the customer's words are extracted as a copy, with a low confidence gate", (fields["said_text"]["type"], fields["said_text"]["min_confidence"]), ("string", 0.05))
-check("the question node and the offer node extract the same fields", [[e["name"] for e in wf["nodes"][n]["extraction_schema"]][-5:] for n in ("negotiate_q", "offer_hardship")],
-      [["reply_kind", "day_text", "amount_text", "about_text", "said_text"]] * 2)
+check("the question node and the offer node extract the same fields", [[e["name"] for e in wf["nodes"][n]["extraction_schema"]][-6:] for n in ("negotiate_q", "offer_hardship")],
+      [["reply_kind", "asks_question", "day_text", "amount_text", "about_text", "said_text"]] * 2)
 
 old = copy.deepcopy(SPEC_A)                                    # a SPEC written before the field existed
 for x in old["situations"]:
     x.pop("evidence_words", None)
 check("a SPEC without evidence words is still valid", validate(old, TOOLS), [])
 check("without evidence words nothing extra is extracted", [e["name"] for e in generate.build(old, TOOLS, "orch")["nodes"]["negotiate"]["extraction_schema"]],
-      ["reply_kind", "day_text", "amount_text", "about_text"])
+      ["reply_kind", "asks_question", "day_text", "amount_text", "about_text"])
 c = Call(old, PUB09)
 check("without evidence words the extraction stands", (c.say("restructuring", "what are the other options"), len(c.transfers())), ("final_end", 1))
 bad = copy.deepcopy(SPEC_A)

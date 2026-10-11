@@ -58,6 +58,10 @@ def main(argv=None):
                         f"bands={len(spec['bands'])}, situations={len(spec['situations'])}, outcomes={len(spec['outcomes']['table'])}, "
                         f"max products={spec['account']['max_products']}, notes={'on' if spec['notes']['enabled'] else 'off'}, "
                         f"holidays={len(spec['calendar']['holidays'])}")
+        mp = spec["multi_product"]
+        if mp["enabled"] and not mp["attempts_per_product"] and not spec["negotiation"].get("call_attempt_limit"):
+            t.event("warning", "the brief counts persuasion attempts for the whole call but gives no number: "
+                               "each product's own band limit caps the call's total")
 
         wf = generate.build(spec, tools, a.mode)
         wf_path = out / f"{a.slot}.workflow.json"

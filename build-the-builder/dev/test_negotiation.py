@@ -147,6 +147,30 @@ for words, want in [("four hundred and fifty-five", 455.0), ("one thousand three
                     ("1,320", 1320.0), ("one twenty five", 125.0), ("six hundred thirty seven point five", 637.5), ("637 pounds 50", 637.5), ("nothing", None)]:
     check(f"amount {words!r}", ns["parse_amount"](words), want)
 
+# Amounts the way people say them: a day number next to the amount, cents in words, "twelve fifty".
+# The optional range (smallest floor, largest full amount of the account) picks between readings of a pair.
+for words, rng, want in [("on the 16th I can pay 200", None, 200.0), ("200 on the 16th", None, 200.0), ("on 16 October, 300", None, 300.0),
+                         ("the twenty-third, two hundred", None, 200.0), ("four hundred fifty five dollars and twenty cents", None, 455.2),
+                         ("455 dollars and 20 cents", None, 455.2), ("four hundred fifty five dollars and 20 cents", None, 455.2),
+                         ("twelve fifty", None, 1250.0), ("twelve fifty", (5.0, 40.0), 12.5), ("twelve fifty", (400.0, 2000.0), 1250.0),
+                         ("twelve fifty five", None, 1255.0), ("twenty five fifty", None, 2550.0), ("fifty five", None, 55.0),
+                         ("one twenty five", None, 125.0), ("on the 16th", None, None)]:
+    check(f"amount {words!r} range {rng}", ns["parse_amount"](words, rng), want)
+# The state machine reads the account's range: "twelve fifty" for a 1250.00 loan is 1250, for a 14.00 balance 12.50
+st, says, nxt, res = run("twelve fifty", A, [("car loan", 1250.0, 400.0, 14)], [E("propose", day="Friday", amount="twelve fifty"), E("accept")])
+check("twelve fifty on a 1250 loan", res[0][:3], ("agreed", 1250.0, "2026-10-16"))
+st, says, nxt, res = run("on the 16th 200", A, [("credit card ending 1903", 2125.1, 200.0, 12)], [E("propose", day="the 16th", amount="on the 16th I can pay 200"), E("accept")])
+check("day number in the amount field is not the amount", res[0][:3], ("agreed", 200.0, "2026-10-16"))
+# "not today, Friday" in the day field never records today
+st, says, nxt, res = run("not today Friday", A, [("car loan", 1250.0, 400.0, 14)], [E("refuse", day="not today, Friday"), E("accept")])
+check("not today, Friday -> Friday", res[0][:3], ("agreed", 1250.0, "2026-10-16"))
+
+# An internal error is kept in the state (the code node writes it to vars['neg_error']), never silent
+bad_plan = [{"name": "x"}]
+st2, say2, nxt2 = ns["step"](ns["new_state"]([{"full": 1.0, "today": "2026-10-14"}]), E("propose", day="Friday"), bad_plan, dt.date(2026, 10, 14), A)
+check("error -> asks again", (say2, nxt2), ("Sorry, could you say that again?", "talk"))
+check("error -> kept in state['err']", bool(st2.get("err")), True)
+
 # Robustness
 st, says, nxt, res = run("garbage", A, [("car loan", 1250.0, 400.0, 14)], [{"kind": None}, {}, E("question"), E("refuse")])
 check("garbage never raises and ends in an offer", nxt, "talk")

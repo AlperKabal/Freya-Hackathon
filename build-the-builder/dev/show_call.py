@@ -77,6 +77,11 @@ def main(args):
             print(f"{ts}   [ERROR] {ev.get('message')} {short(ev.get('details'), 200)}")
         elif kind:
             print(f"{ts}   [{kind}]")
+    if prev.get("clock_ok") == "no":
+        print("\nWARNING: clock_ok = no: the call had no readable `now` variable, so the agent used the real clock "
+              "(today = " + str(prev.get("today_iso")) + "). Dates and deadlines in this call are not the test's.")
+    if prev.get("neg_error"):
+        print("\nWARNING: neg_error = " + str(prev.get("neg_error")) + " (the negotiation code hit an error and asked to repeat)")
 
 
 if __name__ == "__main__":
