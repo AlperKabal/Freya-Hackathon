@@ -154,12 +154,13 @@ def _answer_first(say, nxt):
 def new_state(plan):
     return {"phase": "today", "cursor": 0, "pending_amount": None,
             "p": [{"status": "open", "attempt": 0, "too_much": False, "floor_offered": False, "vague_asks": 0, "below_asks": 0,
-                   "offer_amt": _first(pp), "offer_date": pp["today"], "amt": None, "date": None, "note": "", "clamped": False} for pp in plan]}
+                   "offer_amt": _first(pp), "offer_date": _day1(pp), "amt": None, "date": None, "note": "", "clamped": False} for pp in plan]}
 
 
 # a product's amounts from the SPEC's amount rules (built by the account code node); older plans fall back to the
 # common ladder: first the full amount, accept floor..full, offer the floor when it is too much or too low
 def _first(pp): return pp.get("first", pp["full"])
+def _day1(pp): return pp.get("first_day", pp["today"])       # the first day a promise can have: today, unless today is no business day
 def _lo(pp): return pp.get("lo", pp["floor"])
 def _hi(pp): return pp.get("hi", pp["full"])
 def _tm(pp): return pp.get("tm", pp["floor"])
@@ -201,6 +202,8 @@ def _ladder_offer(pp, x, state=None, cfg=None):
     if st["kind"] == "full_or_floor_if_too_much":
         amt = _tm(pp) if x["too_much"] else _first(pp)
     x["offer_amt"], x["offer_date"] = amt, st["date"]
+    if state is not None:
+        state["pending_amount"] = None                   # a new offer replaces an amount that was waiting for its day
     return True
 
 
@@ -243,6 +246,7 @@ def _to_all(about, multi):
 
 def _next_product(state, plan, cfg):
     """Move to the next open product and make its first persuasion offer; or go to the read-back / close."""
+    state["pending_amount"] = None                       # an amount named for one product never moves on to the next
     if not cfg.get("single_read_back", True) and _unconfirmed(state):
         return _read_back(state, plan, cfg, _unconfirmed(state))
     while True:
@@ -320,7 +324,23 @@ def _below_min(state, i, plan, cfg):
 
 
 def _date_for_all(state, iso, plan, today, cfg):
-    """One date for everything: each open product on that date, or on its own deadline (said in the read-back)."""
+    """One date for everything: each open product on that date, or on its own deadline (said in the read-back).
+    A day that is no business day is corrected for all of them at once: one offer, and a yes agrees every product."""
+    moved = []
+    for i in _open(state):
+        d, changed, why = _check_day(iso, plan[i], today, cfg)
+        if d is not None:
+            moved.append((i, d, changed and not why.startswith("after")))
+    if len(moved) > 1 and any(m for _, _, m in moved):
+        same = len({d for _, d, _ in moved}) == 1
+        for i, d, _ in moved:
+            x, pp = state["p"][i], plan[i]
+            x["offer_amt"], x["offer_date"] = (_tm(pp) if x["too_much"] else _first(pp)), d
+            x["clamped"] = not same and d == pp["deadline"]
+        state["cursor"], state["all_day"] = moved[0][0], [i for i, _, _ in moved]
+        if same:
+            return state, "That day is not possible. Could you pay on " + _day(plan[moved[0][0]], moved[0][1]) + " instead?", "talk"
+        return state, "That day is not possible. Could you pay " + "; and ".join("for your " + plan[i]["name"] + " on " + _day(plan[i], d) for i, d, _ in moved) + "?", "talk"
     for i in _open(state):
         x, pp = state["p"][i], plan[i]
         d, changed, why = _check_day(iso, pp, today, cfg)
@@ -365,6 +385,13 @@ def _step(state, ev, plan, today, cfg):
     # today", "today is too much for me"). Any other day in a refusal is still the customer's proposal.
     if day["status"] == "exact" and day["date"] == today.isoformat() and kind in ("refuse", "too_much", UNCONFIRMED):
         day = {"status": "none", "date": ""}
+    together = state.pop("all_day", None)                # the last sentence offered one corrected day for several products
+    if together and kind == "accept" and day["status"] != "exact" and amount is None and state["phase"] != "confirm":
+        for i in together:
+            if state["p"][i]["status"] == "open":
+                _agree(state["p"][i], state["p"][i]["offer_amt"], state["p"][i]["offer_date"])
+        nxt, say = _next_product(state, plan, cfg)
+        return state, say, nxt
     if kind not in sits:
         if day["status"] == "exact" or (amount is not None and kind in ("accept", "unclear", "refuse", "propose", UNCONFIRMED)):
             kind = "propose"
@@ -393,9 +420,13 @@ def _step(state, ev, plan, today, cfg):
             return state, say, nxt
         if kind == "propose" and reading:
             agreed = reading
-            target = agreed if _to_all(ev.get("about"), multi) or len(agreed) == 1 else [_which(ev.get("about"), plan, agreed[0])]
+            # the product the customer names is the one that changes, also one that had ended: their own proposal
+            # reopens it. Without a name it is the promise being read back.
+            named = -1 if _to_all(ev.get("about"), multi) else _which(ev.get("about"), plan, -1)
+            target = [named] if named >= 0 else (agreed if _to_all(ev.get("about"), multi) or len(agreed) == 1 else [agreed[0]])
             for i in target:
                 state["p"][i]["status"] = "open"
+                state["p"][i].pop("confirmed", None)     # a changed promise is read back again
             state["phase"] = "offer"
             if day["status"] == "exact" and len(target) > 1:
                 return _date_for_all(state, day["date"], plan, today, cfg)
@@ -420,11 +451,13 @@ def _step(state, ev, plan, today, cfg):
                 return _date_for_all(state, day["date"], plan, today, cfg)
             state["cursor"] = 0
             return _on_product(state, kind, day, amount, plan, today, cfg)
-        if kind == "accept":
+        if kind == "accept" and all(_day1(pp) == pp["today"] for pp in plan):
             for i, x in enumerate(state["p"]):
                 _agree(x, _first(plan[i]), plan[i]["today"])
             nxt, say = _finish(state, plan, cfg)
             return state, say, nxt
+        if kind == "accept":                             # a yes to today, on a day no promise can have: today is what they named
+            kind, day = "propose", {"status": "exact", "date": today.isoformat()}
         # one date for several products (multi-product rule: each on its own deadline if needed, said in the read-back);
         # a single product goes through the single-product rules (a late date is offered as the deadline first)
         if multi and kind == "propose" and day["status"] == "exact" and (_to_all(ev.get("about"), multi) or not ev.get("about")) and amount is None:
@@ -477,6 +510,7 @@ def _on_product(state, kind, day, amount, plan, today, cfg):
         return state, say, nxt
     if kind == "too_much":
         x["too_much"] = True
+        state["pending_amount"] = None
         if not x["floor_offered"]:
             x["offer_amt"] = _tm(pp)
             return state, _offer_text(pp, x, cfg, new_floor=True), "talk"

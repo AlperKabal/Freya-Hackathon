@@ -690,7 +690,16 @@ try:
                               + '; below ' + _money(am['accept_min']) + ', offer ' + _money(am['below_min']) + '.')
             if not CFG.get('state_all_first', True):
                 facts[-1] += '. Statement (say it when you start this product): ' + intro[-1]
-            plan.append(dict(name=name, full=round(full, 2), floor=round(min(floor, full), 2), today=today.isoformat(), statement=intro[-1],
+            first_day = today
+            for _ in range(15):                          # today, unless a promise cannot have today (a weekend day, a holiday)
+                v0 = check_promise_date(first_day, today, deadline, CFG)
+                if v0['verdict'] in ('ok', 'offer') and v0['date']:
+                    first_day = _dt.date.fromisoformat(v0['date'])
+                    break
+                first_day = first_day + _dt.timedelta(days=1)
+            else:
+                first_day = today
+            plan.append(dict(name=name, full=round(full, 2), floor=round(min(floor, full), 2), today=today.isoformat(), first_day=first_day.isoformat(), statement=intro[-1],
                              first=am['first_offer'], lo=min(am['accept_min'], am['accept_max']), hi=am['accept_max'], tm=am['too_much'], bm=am['below_min'],
                              deadline=deadline.isoformat() if deadline else '', ladder=lad, spoken=spoken_days))
         # A short calendar: weekdays and deadlines only. Named days are checked by the date_check code node,
