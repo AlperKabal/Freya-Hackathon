@@ -33,25 +33,24 @@ On the platform, with agents built from the reference SPECs (mode orch) at `e153
 Brief A **10/10** (one run), PUB-06 3/3 after 1/4 before the fix, Brief B **3/3** (one run), and the "already paid"
 scenarios pass with the judge.
 
-## Not yet confirmed on the platform
+## Confirmed on the platform after the outage (16:00 UTC, agent built from `609c66d`)
 
-From about 15:14 UTC the platform's model stopped answering: every call hangs after the customer's first reply and
-the customer hangs up after 60 seconds ("slowest agent turn: median 61 s"). An agent that worked an hour earlier
-(`yasar-tune-a`) fails the same way, so it is the platform. These changes are in the branch and were made after it
-began, or were seen only once before it:
+The platform's model stopped answering from about 15:14 to 15:50 UTC (a bug on Freya's side, confirmed by them):
+every call hung after the customer's first reply and the customer hung up after 60 seconds. Runs from that window
+say nothing about the agent. After it:
 
-1. **The product a situation is about** (`builder/generate.py`, the `about_text` extraction; `snippets/negotiation.py`,
-   `_meant`). Passed once on the platform (RULE-B-dispute-one, the run right after the build).
-2. **The close is known as soon as a promise is recorded** (`record_chain`, the `rec_ok_<i>` node writes `outcome`
-   and `reason`). Not run on the platform at all. Offline it changes nothing a customer hears.
+- Brief B, one run: PUB-11 and PUB-12 pass. PUB-13 failed because the platform played that customer twice against
+  one bank session (the first attempt had recorded the card's promise, so the bank refused it the second time:
+  "this product already has a promise"); the agent retried, noted `service_error` and said so, as the brief asks.
+- RULE-B-dispute-one, RULE-B-both-paid, RULE-B-paid-and-refused: 3/3, with the judge. So the two changes that were
+  open are confirmed: the product a situation is about, and the close being known once a promise is recorded.
 
-When the platform answers again (probe with one customer first), run in this order and read every failure in its
-transcript before changing anything:
+How to run things (read every failure in its transcript before changing anything):
 
     source env.sh
     python3 dev/attach_slot.py yasar-exp-date                 # once per clone: update that workflow, do not create one
     PYTHONUTF8=1 python3 builder/build.py briefs/brief-a.md briefs/brief-b.md tools/openapi.json --spec dev/specs/brief-ab.json --slot yasar-exp-date
-    python3 dev/run_cases_retry.py <agent_id> --brief B --only PUB-11 --out results/probe.json     # the probe
+    python3 dev/run_cases_retry.py <agent_id> --brief B --only PUB-11 --out results/probe.json     # a probe: one customer
     python3 dev/run_cases_retry.py <agent_id> --brief B --reps 3 --out results/b.json
     python3 dev/run_scenarios.py <agent_id> --only RULE-B-dispute-one,RULE-B-both-paid,RULE-B-paid-and-refused --reps 3
     PYTHONUTF8=1 python3 builder/build.py briefs/brief-a.md tools/openapi.json --spec dev/specs/brief-a.json --slot yasar-exp-date
@@ -75,7 +74,7 @@ slots `yasar-tune-a`, `yasar-tune-ab`, `alper-*` belong to other work and must n
 
 ## Open, by value
 
-1. Confirm the two changes above on the platform; then `--reps 3` on A and B.
+1. `--reps 3` on A and B (started at 16:04 UTC on this machine; results in `results/final.log`, not committed).
 2. Shorten the end-of-call chain (see above), then measure "slowest agent turn" again.
 3. The Reader on the mock briefs: `python3 dev/run_mock_briefs.py --extract` (about two minutes of model time per
    pack). It was never run. Packs D and H say one bank's rules in two forms, E and G the other's: the SPEC must come

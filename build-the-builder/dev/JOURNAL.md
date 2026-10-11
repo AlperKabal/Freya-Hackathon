@@ -782,4 +782,10 @@ nothing new was created in the workspace. Results in `results/check-*.json` (not
   platform to be tested.
 - For the next session: `dev/HANDOFF_NEXT.md`; `dev/attach_slot.py` points a fresh clone's slot at an existing
   workflow so no new one is created.
+- **After the outage (16:00 UTC, agent from `609c66d`)**: Freya confirmed the stall was a bug on their side. Brief B,
+  one run: PUB-11 and PUB-12 pass; PUB-13 was played twice by the platform against one bank session, so the bank
+  refused the card's promise the second time ("this product already has a promise") and the agent, rightly, retried,
+  noted `service_error` and said so. RULE-B-dispute-one, RULE-B-both-paid and RULE-B-paid-and-refused: 3/3 with the
+  judge, which confirms the product extraction fix and the early close. A call in this run took 30 seconds, turns
+  about 2 seconds.
 
