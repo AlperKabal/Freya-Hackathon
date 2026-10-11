@@ -705,3 +705,25 @@ Known limit: `notes.on_transfer = "add"` has no field for the note's reason; D d
   facility whose attempts ran out gets a note (the brief is ambiguous: D21 says close as declined, D30 says "the
   first note's reason"). Field guide tightened: `for_each_product_without_promise` is true only when the brief says
   so in words; a "first note's reason" closing alone does not.
+
+### Mock briefs merged into `fix-agent-logic`, and what they found (11 October, ~14:00 UTC)
+
+`dev/mock_briefs/` (branch `mock-briefs`, only new files) was merged into `fix-agent-logic` at `54266e9`. It holds
+five briefs we wrote, each bank in both forms the final announces (a consumer bank as raw material and as a clean
+specification, a business bank the same, and the kit's Brief A+B with twelve rules changed on the kit's own API),
+their oracle SPECs, 198 customers with the bank records each brief requires, customers made from any SPEC alone,
+68 one-rule variants of a SPEC, and a walker that plays whole calls through the generated workflow without the
+platform. `dev/mock_briefs/README.md` has the layout and the findings; `python dev/test_mock_briefs.py` runs it all
+in a minute.
+
+Every check of the repository on the merged branch: the 16 existing ones pass. `test_mock_briefs` failed 13 tier-1
+checks, all from four causes, two of them in the Brief A+B agent itself (orch): the "already paid" sentence was
+never said when that product was the last open one, and a promise that could not be saved was never told to the
+customer. The other two are in `snippets/answers.py`: a numbers-only date of birth was read month first with Brief
+A's own format words, and a code said character by character went out as words. All four are fixed in `bb8e28e`,
+with four tier-2 closes (no callback, notes without a closing rule for several products, half a cent, a persuasion
+date on a Sunday). After it: the 16 existing checks pass, `test_mock_briefs` has tier 1: 0, tier 2: 8, tier 3: 12.
+
+Not verified: the Reader on the mock briefs (`python dev/run_mock_briefs.py --extract`, about two minutes of model
+time per pack; this clone has no Claude login) and pack F on the platform (`--simulate`, needs the keys). What is
+still open is listed in the README, by tier.

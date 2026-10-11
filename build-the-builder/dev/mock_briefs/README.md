@@ -43,60 +43,55 @@ for real. What the phone model would do (classify a reply, call a tool, take a t
 So it finds what code decides wrongly and what a fixed sentence says wrongly; it cannot find a model that classifies
 wrongly. Mode v1 is walked up to the negotiation only: there the model decides.
 
-## Findings on commit 92b2a45
+## Findings
 
-### Tier 1
+First run on `92b2a45`; the list below is the state on `fix-agent-logic` after the merge of this folder and the
+fixes of `bb8e28e`. `python dev/test_mock_briefs.py` now ends with tier 1: 0.
 
-1. **"I already paid" on the last open product: the required sentence is never said.** With notes on (every Brief B
-   kind of brief) a product-scope situation's sentence is put in front of the next offer; when no product is left
-   the call closes and the sentence is lost. The ledger is right, the judge's sentence check is not. Seen on the
-   team's own `dev/specs/brief-ab.json` and `imaginary-c.json` too; Brief A's agent is not affected.
+### Fixed
+
+1. **"I already paid" on the last open product: the required sentence was never said** (tier 1; also on the team's
+   own `dev/specs/brief-ab.json` and `imaginary-c.json`). With notes on, a product-scope situation's sentence was
+   put in front of the next offer and lost when the call closed instead. It is now said with the farewell.
    (`D-65`, `E-58`, `F-16`, universal `sit-already_paid`)
-2. **The last recording failure is never told to the customer when no promise was recorded.** `finalize` adds
-   `failure_say` only without an `outcomes.multi` rule; with one the farewell is the plain goodbye. Same SPECs as 1.
-   (`D-61`, `E-50`, universal `norecord`)
-3. **A date of birth given in numbers is read month first, with Brief A's own format words.** In
-   `snippets/answers.py` the test for "month first" (`mm[-/. ]dd`) matches inside "YYYY-MM-DD", which is in every
-   date question's format. `14/03/1988` goes to the bank unchanged, `05/03/1988` goes as `1988-05-03`. The bank's
-   swap hint and its "unreadable" answer hide it (neither counts as wrong), at the price of a turn. `test_answers.py`
-   passes because its hint has no "YYYY-MM-DD". (section `answers`)
-4. **A code said character by character is sent as words.** "L S six, two A B" reaches the bank as `LSSIX,TWOAB`:
-   for a text answer number words are not turned into digits and punctuation is kept. The kit's own `in_words`
-   style talks this way. The model may tidy it first; the hook is the net under it. (`D-14`, section `answers`)
+2. **The last recording failure was never told to the customer when no promise was recorded** (tier 1, same SPECs):
+   `finalize` added `failure_say` only without an `outcomes.multi` rule. (`D-61`, `E-50`, universal `norecord`)
+3. **A date of birth given in numbers was read month first, with Brief A's own format words** (tier 1): the test
+   for "month first" (`mm-dd`) matched inside "YYYY-MM-DD". `14/03/1988` went to the bank unchanged, `05/03/1988`
+   as `1988-05-03`. (section `answers`)
+4. **A code said character by character was sent as words** (tier 1): "L S six, two A B" reached the bank as
+   `LSSIX,TWOAB`. Now `LS62AB`; the commas and full stops of speech are dropped too. (`D-14`, `D-15`)
+5. **`third_party.callback.enabled: false` left a node nobody can reach**, a lint problem in both modes.
+   (`e+no_callback`)
+6. **Notes on, but no `outcomes.multi` rule: every call without a promise closed as the refusal.** The first
+   product's own ending now decides. (`f+one_product_with_notes_no_closing_rule`, `e+no_reasons`)
+7. **Half of an odd amount** was 212.62 for 212.625; now half a cent goes up. (`E-44`)
+8. **An attempt "in three days" was offered on a Sunday**; it now moves to the next business day.
+   (`d+attempt_in_calendar_days`)
+9. By the commits `bbb9e9b`..`54266e9` (made while this folder was written): a date more than ten weeks ahead, or
+   before today, is no longer said as digits; "today" asked per product on a day that is no business day.
 
-### Tier 2
+### Open, tier 2
 
-5. **`third_party.callback.enabled: false` leaves a node nobody can reach** (`set_callback_scheduled`), in both
-   modes: `verify.lint` reports it, so every candidate of such a brief carries a local problem. (`e+no_callback`)
-6. **Notes on, but no `outcomes.multi` rule: every call without a promise closes as the refusal.** Hardship
-   declined, a dispute, "already paid" and a failed recording all close as `attempts_exhausted`. A one-product brief
-   that uses `add_note` has no closing rule for several products. (`f+one_product_with_notes_no_closing_rule`)
-7. **An evidence word that is part of a product name is dropped.** "person" is in "personal loan", so "Can I speak
-   to a real person?" is not acted on the first time and a persuasion attempt is used instead. (`D-69`)
-8. **A day that is refused, not replaced** (`non_business_day: reject`, `after_deadline: reject`): the agent says
-   "That day is not possible." and then repeats its open offer, which names today, instead of asking for another
-   day. With several products the first one's attempt 1 is used up as well. (`D-34s`, `E-40`, `D-89`)
-9. **An attempt "in three days" is offered on a Sunday.** A persuasion date counted in calendar days is not moved to
-   a business day, and a yes to it is recorded on that day. (`d+attempt_in_calendar_days`)
-10. **A date more than ten weeks ahead is said as digits** ("... on 2027-01-29?"): the table of spoken dates covers
-    70 days. The same happens with a deadline that lies before today. (`d+deadline_sixty_business_days`)
-11. **Half of an odd amount**: `round(212.625, 2)` is 212.62; the brief (and a scorer that rounds half up) says
-    212.63. (`E-44`)
-12. **When no day is possible** (the earliest day is after the deadline) the agent still offers and records the
-    deadline. (`d+earliest_tomorrow`, `d+earliest_next_business_day`, on the last business day before Christmas)
-13. **Answers in less common words** are sent as they are: "It's LS6 2AB", a code with a comma or a dash, a code in
-    two turns, "the number is zero eight one...", "'84", "in eighty-four", a date digit by digit, a brief that asks
-    for small letters. (section `answers`, 15 of 28)
+- **An evidence word that is part of a product name is dropped.** "person" is in "personal loan", so "Can I speak
+  to a real person?" is not acted on the first time and a persuasion attempt is used instead. (`D-69`)
+- **A day that is refused, not replaced** (`non_business_day: reject`, `after_deadline: reject`): the agent says
+  "That day is not possible." and then repeats its open offer, which names today, instead of asking for another
+  day. With several products the first one's attempt 1 is used up as well. (`D-34s`, `E-40`, `D-89`)
+- **When no day is possible** (the earliest day is after the deadline) the agent still offers and records the
+  deadline. (`d+earliest_tomorrow`, `d+earliest_next_business_day`, on the last business day before Christmas)
+- **Answers in less common words** are sent as they are: "It's LS6 2AB", a code with a dash, a code in two turns,
+  "the number is zero eight one...", "'84", "in eighty-four", a date digit by digit, a brief that asks for small
+  letters. (section `answers`, 11 of 28)
 
-### Tier 3
+### Open, tier 3
 
-14. **Calls on a day that is no business day.** With several products and a refused weekend day, a yes to "today"
-    uses persuasion attempts; when none is left (or the call's limit is reached) a customer who wanted to pay ends
-    without a promise (`d+no_attempts_at_all`, `d+attempts_for_the_call`). When "today" is asked per product, the
-    later products are recorded on that day (`d+one_by_one`, `d+today_asked_per_product`). A deadline that has
-    already passed is offered (`d+deadline_is_the_weeks_end`, pack D on 24 December). More than 15 closure days in a
-    row defeat the search for the first possible day (`d+holiday_run`).
-15. **A tool API that requires a text with every note**: no note can be sent; lint says so. (`d+note_text_required`)
+- **Calls on a day that is no business day.** With several products and a refused weekend day, a yes to "today"
+  uses persuasion attempts; when none is left (or the call's limit is reached) a customer who wanted to pay ends
+  without a promise (`d+no_attempts_at_all`, `d+attempts_for_the_call`). A deadline that has already passed is
+  still offered (`d+deadline_is_the_weeks_end`, `d+deadline_today`, pack D on 24 December). More than 15 closure
+  days in a row defeat the search for the first possible day (`d+holiday_run`).
+- **A tool API that requires a text with every note**: no note can be sent; lint says so. (`d+note_text_required`)
 
 A question for the team, not a finding: `dev/specs/brief-ab.json` gives `not_talking` no note. Brief B rule 8 says
 every product without a promise is noted, "also when no product gets a promise". Pack D states this case in so many
@@ -104,7 +99,7 @@ words (3.9 f) and the generated agent follows it there.
 
 ### What holds
 
-51 of the 68 one-rule variants end every universal customer as the changed rule requires, among them: another
+57 of the 68 one-rule variants end every universal customer as the changed rule requires, among them: another
 number of identity questions and of wrong answers, one band or four, a month-end or calendar-day deadline, another
 business week, no holidays, another callback window, minimum first, only the full amount, at least half, one try or
 four, each promise read back on its own, products stated one by one, attempts for the whole call, promises recorded
