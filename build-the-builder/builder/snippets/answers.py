@@ -178,3 +178,45 @@ def normalize_answer(kind, answer, hint=""):
         return answer
     except Exception:
         return answer
+
+
+_HOW_MANY = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
+
+
+def digits_wanted(kind, hint=""):
+    """How many digits a complete answer has, when its type or its description says so; else None."""
+    if kind == "year":
+        return 4
+    if kind not in ("digits", "number"):
+        return None
+    m = _re.search(r"\b(\d{1,2}|" + "|".join(_HOW_MANY) + r")[- ](?:digits?|numbers?|figures?)\b", str(hint or "").lower())
+    if not m:
+        return None
+    return int(m.group(1)) if m.group(1).isdigit() else _HOW_MANY[m.group(1)]
+
+
+def whole_answer(kind, earlier, answer, hint=""):
+    """An answer given in two turns ('44' then '71'; '14 March' then '1988'; 'nineteen' then 'eighty-eight').
+    -> (the value to send, the part to keep for the next call). `earlier` is the part kept by the call before, ''
+    if none. Two parts are joined only when the latest alone is not a complete answer and the two together are one:
+    an answer that is complete by itself goes out as normalize_answer() gives it. Never raises."""
+    value = normalize_answer(kind, answer, hint)
+    try:
+        earlier, v = str(earlier or ""), str(value)
+        n = digits_wanted(kind, hint)
+        done = {"date": r"\d{4}-\d{2}-\d{2}", "year": r"\d{4}"}.get(kind)
+        if (done and _re.fullmatch(done, v)) or (n and v.isdigit() and len(v) >= n):
+            return value, ""                                       # complete by itself
+        if n and v.isdigit() and earlier.isdigit() and len(earlier) + len(v) == n:
+            return earlier + v, ""
+        if done and earlier:
+            both = normalize_answer(kind, earlier + " " + str(answer), hint)
+            if _re.fullmatch(done, str(both)):
+                return both, ""
+        if done:
+            return value, str(answer)[:60]
+        if n and v.isdigit():
+            return value, v
+        return value, ""
+    except Exception:
+        return value, ""

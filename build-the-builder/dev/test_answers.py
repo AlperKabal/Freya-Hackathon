@@ -105,5 +105,37 @@ for q in cspec["identity"]["questions"]:
     exec(chook, {"config": {"body": body}, "vars": {}})
     check(f"another bank: {q['field']} ({q['value_type']}) said in words", body[ctf["answer"]], want)
 
+# an answer given in two turns ("you give long numbers and dates in two parts"): the hook sends it whole
+whole, wanted = ns["whole_answer"], ns["digits_wanted"]
+check("how many digits a complete answer has, from the description", [wanted("digits", h) for h in ("four digits", "Send the 4 digits only.", "a six-digit code", "digits only", "")] + [wanted("year", ""), wanted("date", "four digits"), wanted("text", "8 digits")],
+      [4, 4, 6, None, None, 4, None, None])
+for kind, hint, earlier, said, want in [
+        ("digits", "four digits", "", "44", ("44", "44")), ("digits", "four digits", "44", "71", ("4471", "")), ("digits", "four digits", "44", "seven one", ("4471", "")),
+        ("digits", "four digits", "44", "4471", ("4471", "")), ("digits", "four digits", "", "4471", ("4471", "")), ("digits", "four digits", "44", "7", ("7", "7")),
+        ("digits", "four digits", "447", "1", ("4471", "")), ("digits", "digits only", "44", "71", ("71", "")), ("year", "", "", "nineteen", ("nineteen", "nineteen")),
+        ("year", "", "nineteen", "eighty-eight", ("1988", "")), ("year", "", "", "19", ("19", "19")), ("year", "", "19", "88", ("1988", "")), ("year", "", "19", "1988", ("1988", "")),
+        ("date", "YYYY-MM-DD", "", "14 March", ("14 March", "14 March")), ("date", "YYYY-MM-DD", "14 March", "1988", ("1988-03-14", "")),
+        ("date", "YYYY-MM-DD", "the fourteenth of March", "nineteen eighty-eight", ("1988-03-14", "")), ("date", "YYYY-MM-DD", "14 March", "14 March 1988", ("1988-03-14", "")),
+        ("date", "YYYY-MM-DD", "", "14 March 1988", ("1988-03-14", "")), ("date", "YYYY-MM-DD", "something", "else", ("else", "else")),
+        ("text", "capital letters, no spaces", "sw1a", "1aa", ("1AA", "")), ("digits", "four digits", None, None, (None, ""))]:
+    check(f"in two turns: {kind}, kept {earlier!r}, now {said!r}", whole(kind, earlier, said, hint), want)
+
+
+def call(vars_, field, answer):
+    body = {"field": field, "answer": answer, "customer_id": "c1"}
+    exec(hook, {"config": {"body": body}, "vars": vars_})
+    return body["answer"]
+
+
+v = {}
+check("hook: half of the digits, then the other half: the second call sends all four", (call(v, "phone_last4", "44"), call(v, "phone_last4", "71"), v.get("id_part_phone_last4")), ("44", "4471", ""))
+v = {}
+check("hook: a date without its year, then the year: the second call sends the date", (call(v, "date_of_birth", "14 March"), call(v, "date_of_birth", "1988")), ("14 March", "1988-03-14"))
+v = {}
+check("hook: a part kept for one question is not used for the other", (call(v, "phone_last4", "44"), call(v, "date_of_birth", "1988-03-14"), call(v, "phone_last4", "71")), ("44", "1988-03-14", "4471"))
+v = {}
+check("hook: a wrong whole answer and then the right one are not joined", (call(v, "phone_last4", "4401"), call(v, "phone_last4", "4410"), v.get("id_part_phone_last4")), ("4401", "4410", ""))
+check("the identity step tells the model not to send half an answer", "only a part of an answer" in generate.build(spec, tools, "orch")["nodes"]["identity"]["task_message"], True)
+
 print("\nall good" if not fails else f"\n{fails} failure(s)")
 sys.exit(1 if fails else 0)

@@ -489,7 +489,7 @@ end.
 **2. Identity answers by type, not by field name** (`snippets/answers.py`, the verify tool's pre-hook).
 - The SPEC's `value_type` decides the form: a date as the API asks, a year in four digits, a digit string without
   spaces even when said in parts or in words, a code in upper case without spaces. An answer already in the right
-  form is unchanged; one the code is not sure about goes out as the model wrote it. `dev/test_answers.py`, 62 checks.
+  form is unchanged; one the code is not sure about goes out as the model wrote it. `dev/test_answers.py`, 89 checks.
 
 **3. Sentences read against a literal judge** (`sentences.py`, run before every save, findings in the trace).
 - Forbidden words before identity, words that read as "it was saved" before a save, a placeholder said aloud, one
@@ -537,6 +537,11 @@ end.
 
 **6. Speaking styles** (`dev/run_styles.py`): the kit's runner once per style (pieces, corrects, talkative,
 asks_back, in_words), then a customer x style table from the result files.
+- For the "pieces" style (a number or a date in two turns) the identity step now has two guards: its prompt says not
+  to send half an answer, and the verify tool's pre-hook keeps a part that cannot be a whole answer and joins it
+  with the next one ("44" then "71" -> 4471; "14 March" then "1988" -> the date; `whole_answer`, `digits_wanted` in
+  `snippets/answers.py`). A whole answer is never joined with anything. This is the one change of this round to a
+  prompt every call passes through: run the practice customers on a fresh build before anything else.
 
 **7. Does the builder read a changed brief?** (`dev/mutate_brief.py`, `dev/test_mutations.py`).
 - 16 copies of Brief A, each with one change (holiday added or removed, band limit moved, a third band, an outcome
@@ -552,12 +557,12 @@ band's own second attempt (property test). The builder runs no simulation: build
 ten seconds.
 
 **Checks after this round**: test_spec_schema, test_dates 155, test_not_today 14, test_negotiation 67,
-test_situation_guard 124, test_answers 62, test_robust 108, test_calendar_days 35, test_properties 13,
+test_situation_guard 124, test_answers 89, test_robust 108, test_calendar_days 35, test_properties 13,
 test_scenarios 24, test_mutations 29, test_generate 158: all pass; literal check clean. For the reference SPECs
 the generated workflows differ from `df57913` only in: one new code node (`say_farewell`), the identity pre-hook,
-and the code of `setup`, `prepare_deal`, `finalize`, `check_callback`, `neg_eval` (orch) / `date_check` (v1), plus
-one example added to the callback extraction text. System prompt, node prompts, transitions and tool definitions
-are the same.
+the code of `setup`, `prepare_deal`, `finalize`, `check_callback`, `neg_eval` (orch) / `date_check` (v1), one
+sentence added to the identity step's prompt (half an answer) and one example added to the callback extraction
+text. System prompt, the other node prompts, transitions and tool definitions are the same.
 
 **Not verified on the platform** (run these first, in this order, one simulation at a time):
 1. A fresh build of A and A+B in both modes without `--spec` (the Reader must fill `evidence_words` and

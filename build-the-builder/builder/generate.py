@@ -538,8 +538,9 @@ try:
         vars['id_last_field'] = str(b.get({self.tf['verify_identity']['field']!r}) or '')
         k = kinds.get(vars['id_last_field'])
         a = str(b.get({self.tf['verify_identity']['answer']!r}) or '').strip()
-        if k and a:
-            b[{self.tf['verify_identity']['answer']!r}] = normalize_answer(k[0], a, k[1])
+        if k and a:                                  # an answer given in two turns is sent whole: the kept part is joined
+            part = 'id_part_' + vars['id_last_field']
+            b[{self.tf['verify_identity']['answer']!r}], vars[part] = whole_answer(k[0], vars.get(part), a, k[1])
 except Exception:
     pass
 """
@@ -560,7 +561,9 @@ except Exception:
                 + (f"Never say these words before the check passes: {words}. " if words else "")
                 + "If asked why you call, say you can explain after the security check. "
                 + ("Ask ONE question at a time, in this order. " if idn["one_at_a_time"] else "Ask the questions in this order. ") + qlist + " "
-                + "After EACH answer CALL verify_identity. Follow the what_to_do_next line of every tool result exactly. "
+                + "After EACH answer CALL verify_identity. If the customer gives only a part of an answer (the first half of a number, "
+                  "a date without its year), do not call it yet: ask for the rest, then send the whole answer in one call. "
+                + "Follow the what_to_do_next line of every tool result exactly. "
                 + ("A wrong answer may be asked again. " if idn["wrong_may_retry"] else "")
                 # declines are counted by code (node id_count), not by the model: the call closes on the SPEC's count
                 + "The system counts how often the customer declined the security questions: {{id_declines}} time(s) so far. "
