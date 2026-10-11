@@ -315,7 +315,7 @@
    "refused_is_flat_refusal": true
   },
   "below_min": {
-   "say": "That amount cannot be recorded.",
+   "say": "I am not able to accept that amount.",
    "offer": {
     "kind": "floor"
    },

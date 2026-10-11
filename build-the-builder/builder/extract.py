@@ -2,15 +2,17 @@
 
     spec, report = run(extract(docs, tools, trace))
 
-Reader (brief -> SPEC) and Binder (tool API -> field mapping) run in parallel; code merges and validates; invalid
-SPECs go back to the Reader with the errors (at most twice); then the Auditor, who never saw the drafts, checks the
-SPEC against the brief rule by rule; its findings get one repair round, which is kept only if it still validates.
+Reader (brief -> SPEC) and Binder (tool API -> field mapping) run in parallel; code merges and validates; an invalid
+SPEC is repaired by rule at once (builder/robust.py) and goes back to the Reader only for what the rules had to drop
+(at most twice); then the Auditor, who never saw the drafts, checks the SPEC against the brief rule by rule; its
+findings get one repair round, which is kept only if it still validates. A model call that fails never ends the
+build: only a Reader that gives no SPEC at all raises (llm.LLMError), and the caller then builds without one.
 The prompts describe mechanisms and the SPEC format. They contain no content from any brief.
 """
 import asyncio, copy, json, re
 
-from builder import spec_schema as S
-from builder.llm import ask_json
+from builder import robust, spec_schema as S
+from builder.llm import LLMError, ask_json
 
 # ---------------------------------------------------------------- the SPEC format, written out for the model
 
@@ -99,6 +101,7 @@ You are the READER. Turn the bank's documents into one SPEC.
 - A transfer or the end of the call cannot be undone. For each situation with such an effect, state the trigger as the explicit thing the customer must say or ask for, and fill not_this and evidence_words as the field guide describes.
 - Use single braces for call variables in sentences, for example {variable_name}.
 - If the documents do not say something a field needs, choose the most cautious value and add a free_rules entry that says what was missing.
+- When the documents have a rule but no value the format allows says it exactly (an unusual date rule, a condition on an amount), choose the closest allowed value AND write the rule itself into free_rules with the stage it applies to, so the agent still follows it.
 - Put every rule that fits no field into free_rules, and list every rule in rule_map."""
 
 BINDER = COMMON + """
@@ -127,8 +130,12 @@ def _shape_ok(value, schema_part):
     return not errs
 
 
-# Sentences spoken before anything is saved, and words a literal judge can read as "it was saved".
-PRE_SUCCESS = [("opening", "first_sentence"), ("opening", "confirm_question"), ("recording", "retry_say"), ("negotiation", "first_ask"), ("confirmation", "question")]
+# Sentences spoken while nothing is saved yet, and words a literal judge can read as "it was saved". A sentence the
+# brief prescribes word for word for a situation (say_exact) is left as it is.
+PRE_SUCCESS = [("opening", "first_sentence"), ("opening", "confirm_question"), ("recording", "retry_say"), ("recording", "failure_say"),
+               ("negotiation", "first_ask"), ("confirmation", "question"), ("account", "statement_intro"), ("account", "statement_per_product"),
+               ("multi_product", "first_ask_all"), ("amounts", "too_much", "say"), ("amounts", "below_min", "say"),
+               ("identity", "on_failed", "say"), ("identity", "decline", "explanation"), ("closing", "farewell")]
 CLAIM_WORDS = re.compile(r"\b(recorded|saved|booked|registered|logged)\b", re.I)
 
 REWORDER = COMMON + """
@@ -137,16 +144,40 @@ only replace words that a listener could take as a claim that something was reco
 Reply: {"sentence": "..."}"""
 
 
+def _at(spec, path):
+    node = spec
+    for k in path:
+        node = node.get(k) if isinstance(node, dict) else None
+    return node
+
+
+def pre_success_sentences(spec):
+    """(label, holder, key) of every sentence the agent can say while nothing is saved yet."""
+    out = []
+    for path in PRE_SUCCESS:
+        holder = _at(spec, path[:-1])
+        if isinstance(holder, dict) and isinstance(holder.get(path[-1]), str):
+            out.append((".".join(path), holder, path[-1]))
+    for x in spec.get("situations") or [] if isinstance(spec, dict) else []:
+        if isinstance(x, dict) and isinstance(x.get("say"), str) and not x.get("say_exact"):
+            out.append((f"situations.{x.get('id')}.say", x, "say"))
+    return out
+
+
 async def reword_pre_success(spec, trace=None):
-    """Code finds the risky sentences; the model only rewrites those, one small call each, in parallel."""
-    todo = [(a, b) for a, b in PRE_SUCCESS if isinstance(spec.get(a, {}).get(b), str) and CLAIM_WORDS.search(spec[a][b])]
-    async def one(a, b):
-        r = await ask_json(REWORDER, f"Sentence: {spec[a][b]}", f"Reworder: {a}.{b} before any save", trace)
+    """Code finds the risky sentences; the model only rewrites those, one small call each, in parallel. A call that
+    fails leaves its sentence as it is."""
+    todo = [(label, holder, key) for label, holder, key in pre_success_sentences(spec) if CLAIM_WORDS.search(holder[key])]
+    async def one(label, holder, key):
+        try:
+            r = await ask_json(REWORDER, f"Sentence: {holder[key]}", f"Reworder: {label} before any save", trace, timeout=90)
+        except LLMError:
+            return
         new = r.get("sentence") if isinstance(r, dict) else None
         if isinstance(new, str) and new.strip() and not CLAIM_WORDS.search(new):
-            if trace: trace.event("spec", f"reworded {a}.{b}: {spec[a][b]!r} -> {new!r}")
-            spec[a][b] = new.strip()
-    await asyncio.gather(*(one(a, b) for a, b in todo))
+            if trace: trace.event("spec", f"reworded {label}: {holder[key]!r} -> {new!r}")
+            holder[key] = new.strip()
+    await asyncio.gather(*(one(*x) for x in todo))
     return spec
 
 
@@ -176,41 +207,140 @@ def merge_binding(spec, b):
     return s
 
 
-async def extract(docs, tools, trace=None, max_repairs=2):
-    guide, api, text = format_guide(), tools_summary(tools), briefs_text(docs)
+def rule_binding(tools):
+    """The Binder's answer, read from the tool API by rule (builder/robust.py): used when the Binder gave none."""
+    b = robust.bind(tools)
+    return {"tool_fields": b["tool_fields"], "identity_result_fields": b["result_fields"], "products_field": b["products_field"],
+            "product_fields": b["product_fields"], "product_types": [{"type": p["type"], "floor_field": p["floor_field"]} for p in b["product_types"]]}
+
+
+def settle_binding(binding, tools):
+    """A name the Binder gave that the tool API does not have is replaced by the rule's choice: a mechanical slip
+    must not cost a repair round with the Reader."""
+    rule = rule_binding(tools)
+    if not isinstance(binding, dict):
+        return rule
+    out = copy.deepcopy(binding)
+    try:
+        tf = out.get("tool_fields")
+        if not _shape_ok(tf, S.SCHEMA["tool_fields"]):
+            out["tool_fields"] = tf = rule["tool_fields"]
+        for tool, roles in rule["tool_fields"].items():
+            request = (tools.get(tool) or {}).get("request") or {}
+            if tool == "customer_id":
+                if any(tf["customer_id"] not in ((tools.get(n) or {}).get("request") or {}) for n in S.TOOL_NAMES if n in tools):
+                    tf["customer_id"] = roles
+                continue
+            for role, guess in roles.items():
+                if tf[tool].get(role) and tf[tool][role] not in request:
+                    tf[tool][role] = guess
+        for key, having in (("identity_result_fields", (tools.get("verify_identity") or {}).get("response") or {}),):
+            if not _shape_ok(out.get(key), S.SCHEMA["identity"]["result_fields"]):
+                out[key] = rule[key]
+            for role, guess in rule[key].items():
+                if out[key].get(role) and out[key][role] not in having:
+                    out[key][role] = guess
+        products = (tools.get("get_account") or {}).get("response") or {}
+        if not isinstance(out.get("products_field"), str) or not (products.get(out["products_field"]) or {}).get("items"):
+            out["products_field"] = rule["products_field"]
+        items = (products.get(out["products_field"]) or {}).get("items") or {}
+        if not _shape_ok(out.get("product_fields"), S.SCHEMA["account"]["product_fields"]):
+            out["product_fields"] = rule["product_fields"]
+        for role, guess in rule["product_fields"].items():
+            if out["product_fields"].get(role) not in items:
+                out["product_fields"][role] = guess
+    except Exception:
+        return rule
+    return out
+
+
+def _prompts(docs, tools):
+    return format_guide(), tools_summary(tools), briefs_text(docs)
+
+
+async def _repair(current, problems, why, docs, tools, binding, trace):
+    guide, api, text = _prompts(docs, tools)
+    p = (f"{guide}\n\nTOOL API FILE (parsed):\n{api}\n\nTHE BANK'S DOCUMENTS:\n{text}\n\nCURRENT SPEC:\n{json.dumps(current, indent=1)}\n\n"
+         f"PROBLEMS ({why}):\n" + "\n".join(f"- {x}" for x in problems) + "\n\nReturn the complete corrected SPEC.")
+    return merge_binding(await ask_json(READER, p, f"Reader: repair SPEC ({why})", trace), binding)
+
+
+async def draft(docs, tools, trace=None, max_repairs=2):
+    """Reader and Binder in parallel, then a SPEC that validates: (spec, binding, report).
+
+    A SPEC with problems is first repaired by rule (builder/robust.py), which always gives a usable SPEC at once.
+    Only when the rules had to drop or replace something does the Reader get the problems back (at most
+    `max_repairs` times); its answer is taken when it validates or loses less. Without a Binder answer the mapping
+    is read from the tool API by rule. Raises LLMError only when the Reader gave no SPEC at all."""
+    guide, api, text = _prompts(docs, tools)
     reader_prompt = f"{guide}\n\nTOOL API FILE (parsed):\n{api}\n\nTHE BANK'S DOCUMENTS:\n{text}\n\nWrite the SPEC now."
     binder_prompt = f"TOOL API FILE (parsed):\n{api}\n\nTHE BANK'S DOCUMENTS:\n{text}\n\nWrite the mapping now."
     spec, binding = await asyncio.gather(ask_json(READER, reader_prompt, "Reader: documents -> SPEC", trace),
-                                         ask_json(BINDER, binder_prompt, "Binder: tool API -> field mapping", trace))
+                                         ask_json(BINDER, binder_prompt, "Binder: tool API -> field mapping", trace, timeout=240),
+                                         return_exceptions=True)
+    report = {"repairs": 0, "audit_issues": [], "audit_applied": False, "coerced": False, "notes": [], "errors": []}
+    if isinstance(binding, BaseException):
+        if trace: trace.event("spec", f"no Binder answer ({str(binding)[:120]}): the field mapping is read from the tool API by rule")
+    binding = settle_binding(None if isinstance(binding, BaseException) else binding, tools)
+    if isinstance(spec, BaseException):
+        raise spec if isinstance(spec, LLMError) else LLMError(f"Reader: {type(spec).__name__}: {spec}")
     spec = merge_binding(spec, binding)
-    report = {"repairs": 0, "audit_issues": [], "audit_applied": False}
-
-    async def repair(current, problems, why):
-        p = (f"{guide}\n\nTOOL API FILE (parsed):\n{api}\n\nTHE BANK'S DOCUMENTS:\n{text}\n\nCURRENT SPEC:\n{json.dumps(current, indent=1)}\n\n"
-             f"PROBLEMS ({why}):\n" + "\n".join(f"- {x}" for x in problems) + "\n\nReturn the complete corrected SPEC.")
-        return merge_binding(await ask_json(READER, p, f"Reader: repair SPEC ({why})", trace), binding)
 
     errs = S.validate(spec, tools)
-    while errs and report["repairs"] < max_repairs:
-        report["repairs"] += 1
-        if trace: trace.event("spec", f"{len(errs)} validation problem(s), repair round {report['repairs']}")
-        spec = await repair(spec, errs[:60], "validation errors")
-        errs = S.validate(spec, tools)
+    best = notes = None
     if errs:
-        return spec, dict(report, errors=errs)
+        best, notes, _ = robust.coerce(spec, tools)
+        if trace: trace.event("spec", f"{len(errs)} validation problem(s); repaired by rule, {len(notes)} value(s) dropped or replaced")
+    while errs and notes and report["repairs"] < max_repairs:
+        report["repairs"] += 1
+        if trace: trace.event("spec", f"repair round {report['repairs']}: the Reader gets the {len(errs)} problem(s)")
+        try:
+            spec = await _repair(spec, errs[:60], "validation errors", docs, tools, binding, trace)
+        except LLMError as e:
+            if trace: trace.event("spec", f"repair round failed ({str(e)[:120]}); the rule-repaired SPEC is kept")
+            break
+        errs = S.validate(spec, tools)
+        if errs:
+            c, n, _ = robust.coerce(spec, tools)
+            if len(n) < len(notes):
+                best, notes = c, n
+    if errs:
+        spec = best
+        report.update(coerced=True, notes=notes, errors=S.validate(spec, tools))
+        if trace:
+            for n in notes[:20]: trace.event("spec-note", n)
     spec = await reword_pre_success(spec, trace)
+    return spec, binding, report
 
-    audit = await ask_json(AUDITOR, f"{guide}\n\nTOOL API FILE (parsed):\n{api}\n\nTHE BANK'S DOCUMENTS:\n{text}\n\nTHE SPEC TO CHECK:\n{json.dumps(spec, indent=1)}",
-                           "Auditor: SPEC vs documents, rule by rule", trace)
-    issues = [i for i in (audit.get("issues") or []) if isinstance(i, dict)]
-    report["audit_issues"] = issues
-    if issues:
-        fixed = await repair(spec, [f"{i.get('rule', '')}: {i.get('problem', '')} -> {i.get('fix', '')}" for i in issues], "auditor findings")
-        if not S.validate(fixed, tools):
-            spec, report["audit_applied"] = fixed, True
-        elif trace:
-            trace.event("spec", "auditor repair did not validate; kept the validated SPEC")
-    return spec, dict(report, errors=[])
+
+async def audit(spec, binding, docs, tools, trace=None):
+    """The Auditor, who never saw the drafts, checks the SPEC against the documents; its findings get one repair
+    round, kept only when the repaired SPEC validates. Whatever fails here leaves the SPEC as it was."""
+    report = {"audit_issues": [], "audit_applied": False}
+    guide, api, text = _prompts(docs, tools)
+    try:
+        found = await ask_json(AUDITOR, f"{guide}\n\nTOOL API FILE (parsed):\n{api}\n\nTHE BANK'S DOCUMENTS:\n{text}\n\nTHE SPEC TO CHECK:\n{json.dumps(spec, indent=1)}",
+                               "Auditor: SPEC vs documents, rule by rule", trace)
+        issues = [i for i in (found.get("issues") or []) if isinstance(i, dict)] if isinstance(found, dict) else []
+        report["audit_issues"] = issues
+        if issues:
+            fixed = await _repair(spec, [f"{i.get('rule', '')}: {i.get('problem', '')} -> {i.get('fix', '')}" for i in issues], "auditor findings", docs, tools, binding, trace)
+            if not S.validate(fixed, tools):
+                spec, report["audit_applied"] = await reword_pre_success(fixed, trace), True
+            elif trace:
+                trace.event("spec", "auditor repair did not validate; kept the validated SPEC")
+    except LLMError as e:
+        if trace: trace.event("spec", f"audit not finished ({str(e)[:120]}); kept the SPEC as it was")
+    return spec, report
+
+
+async def extract(docs, tools, trace=None, max_repairs=2):
+    """draft, then audit: (spec, report). report["errors"] lists what can still be wrong: only problems of the tool
+    API itself (a tool it does not have)."""
+    spec, binding, report = await draft(docs, tools, trace, max_repairs)
+    spec, rep = await audit(spec, binding, docs, tools, trace)
+    report.update(rep)
+    return spec, report
 
 
 if __name__ == "__main__":       # python -m builder.extract <briefs...> <tool_api.json> <out_spec.json>

@@ -136,8 +136,10 @@ def sample_products(spec, n=3):
     pf, out = spec["account"]["product_fields"], []
     types, bands = spec["account"]["product_types"], spec["bands"]
     for i in range(n):
-        t, b = types[i % len(types)], bands[i % len(bands)]
-        p = {pf["id"]: f"x{i + 1}", pf["type"]: t["type"], pf["past_due"]: 400.0 + i, pf["days_late"]: b["days_late_max"], t["floor_field"]: 100.0}
+        # a SPEC without product types or bands (a brief that names none) still gets sample products
+        t = types[i % len(types)] if types else {"type": "item", "floor_field": pf["past_due"], "spoken_name": "item"}
+        days = bands[i % len(bands)]["days_late_max"] if bands else 10
+        p = {pf["id"]: f"x{i + 1}", pf["type"]: t["type"], pf["past_due"]: 400.0 + i, pf["days_late"]: days, t["floor_field"]: 100.0}
         for ph in re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", t["spoken_name"]):
             p.setdefault(ph, "9" * 4)
         out.append(p)
