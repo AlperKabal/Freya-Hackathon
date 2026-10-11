@@ -507,22 +507,14 @@ def offers(lines):
 
 # ---------------------------------------------------------------- packs and cases
 
-class Pack:
-    def __init__(self, name):
-        self.name, self.dir = name, HERE / name
-        meta = json.loads((self.dir / "pack.json").read_text(encoding="utf-8"))
-        self.meta = meta
-        self.title, self.tier = meta["title"], meta.get("tier", 1)
-        self.docs = [self.dir / f for f in meta["docs"]]
-        self.api_path = (KIT / meta["api"]) if meta.get("api") else self.dir / "tool-api.json"
-        self.tools = ingest.parse_openapi(self.api_path)["tools"]
-        self.spec = json.loads((self.dir / "spec.json").read_text(encoding="utf-8"))
-        self.cal = Cal(self.spec)
-        self.roles = {x["role"]: x["name"] for x in self.spec["call_variables"] if x["role"] in ("customer_id", "now")}
-        self._wf = {}
+class Box:
+    """A SPEC with its tools: enough to generate the agent and walk calls through it."""
 
-    def text(self):
-        return "\n\n".join(ingest.read_text(p)[0] for p in self.docs)
+    def __init__(self, name, spec, tools, title=None, tier=1):
+        self.name, self.spec, self.tools, self.title, self.tier = name, spec, tools, title or name, tier
+        self.cal = Cal(spec)
+        self.roles = {x["role"]: x["name"] for x in spec["call_variables"] if x["role"] in ("customer_id", "now")}
+        self._wf = {}
 
     def wf(self, mode, spec=None):
         if spec is not None:
@@ -530,6 +522,35 @@ class Pack:
         if mode not in self._wf:
             self._wf[mode] = generate.build(self.spec, self.tools, mode)
         return self._wf[mode]
+
+    def bank(self, case, spec=None):
+        return Bank(spec or self.spec, self.tools, case.get("identity"), case.get("products"), case.get("faults"))
+
+    def sim(self, case, mode="orch", spec=None):
+        spec = spec or self.spec
+        return Sim(spec, self.tools, self.bank(case, spec), mode, case["now"], case.get("variables"), self.wf(mode, None if spec is self.spec else spec))
+
+    def with_spec(self, spec, name=None):
+        """The same documents and tools with another reading of them (an extracted SPEC instead of the oracle)."""
+        b = Box(name or self.name, spec, self.tools, self.title, self.tier)
+        b.cases = self.cases
+        return b
+
+    def cases(self):
+        return []
+
+
+class Pack(Box):
+    def __init__(self, name):
+        self.dir = HERE / name
+        meta = json.loads((self.dir / "pack.json").read_text(encoding="utf-8"))
+        self.meta = meta
+        self.docs = [self.dir / f for f in meta["docs"]]
+        self.api_path = (KIT / meta["api"]) if meta.get("api") else self.dir / "tool-api.json"
+        Box.__init__(self, name, json.loads((self.dir / "spec.json").read_text(encoding="utf-8")), ingest.parse_openapi(self.api_path)["tools"], meta["title"], meta.get("tier", 1))
+
+    def text(self):
+        return "\n\n".join(ingest.read_text(p)[0] for p in self.docs)
 
     def cases(self):
         path = self.dir / "cases.py"
@@ -542,26 +563,14 @@ class Pack:
         assert len(ids) == len(set(ids)), f"{self.name}: case ids are not unique"
         return out
 
-    def bank(self, case, spec=None):
-        return Bank(spec or self.spec, self.tools, case.get("identity"), case.get("products"), case.get("faults"))
-
-    def sim(self, case, mode="orch", spec=None):
-        spec = spec or self.spec
-        return Sim(spec, self.tools, self.bank(case, spec), mode, case["now"], case.get("variables"), self.wf(mode, None if spec is self.spec else spec))
-
-    def ids(self, case):
-        pf = self.spec["account"]["product_fields"]["id"]
-        return [p.get(pf, f"p{i + 1}") for i, p in enumerate(case.get("products") or [])]
-
-
 def case(cid, title, family, now, steps, outcome, reason=None, promises=(), notes=(), callbacks=(), transfers=(), variables=None, identity=None,
-         products=None, faults=None, script="", checks=(), said=(), not_said=(), once=(), offered=None, tier=1, modes=("orch",), calls=None, base=None, note=""):
+         products=None, faults=None, script="", checks=(), said=(), not_said=(), once=(), offered=None, tier=1, modes=("orch",), calls=None, base=None, note="", free=False):
     """One customer. `steps` is how the walker plays it; `script` and `checks` are the same customer for a
     simulation on the platform (the persona's text and the judge's criteria)."""
     return {"id": cid, "title": title, "family": family, "now": now, "steps": list(steps), "variables": dict(variables or {}),
             "identity": dict(identity or {}), "products": [dict(p) for p in products or []], "faults": dict(faults or {}),
             "script": script, "checks": list(checks), "said": list(said), "not_said": list(not_said), "once": list(once), "offered": offered, "tier": tier,
-            "modes": list(modes), "calls": calls, "base": base, "note": note,
+            "modes": list(modes), "calls": calls, "base": base, "note": note, "free": free,
             "expected": {"outcome": outcome, "reason": reason, "promises": sorted((p, round(float(a), 2), d if isinstance(d, str) else d.isoformat()) for p, a, d in promises),
                          "notes": sorted(((p, r) for p, r in notes), key=str),
                          "callbacks": sorted((d if isinstance(d, str) else d.isoformat(), t) for d, t in callbacks), "transfers": sorted(transfers)}}
@@ -697,7 +706,9 @@ def judge(P, c, sim, spec=None):
     spec = spec or P.spec
     out = list(sim.problems)
     led, exp = sim.bank.ledger(), c["expected"]
-    if sim.stopped:                                               # mode v1: everything up to the negotiation was checked
+    if sim.stopped or c.get("free"):                              # mode v1 up to the negotiation; or a customer with no single right ending
+        if c.get("free") and not sim.ended and not sim.stopped:
+            out.append(f"the call did not end (it waits in step {sim.node!r}; last sentence: {sim.last()[:140]!r})")
         return out + always(P, c, sim, spec)
     if not sim.ended:
         out.append(f"the call did not end (it waits in step {sim.node!r}; last sentence: {sim.last()[:140]!r})")
@@ -711,7 +722,7 @@ def judge(P, c, sim, spec=None):
     out += [f"said, and must not be: {s!r}" for s in c["not_said"] if s.lower() in text.lower()]
     out += [f"said {text.count(s)} time(s), the brief says once: {s!r}" for s in c["once"] if text.count(s) != 1]
     if c.get("offered") is not None:
-        question = spec["confirmation"]["question"]
+        question = sim.spec["confirmation"]["question"]            # the agent's own read-back question
         got = [(a, d) for line in sim.lines("negotiate") if not (question and question in line) for a, d, _ in offers([line])]
         want = [(a, d if isinstance(d, str) else d.isoformat()) for a, d in c["offered"]]
         same = len(got) == len(want) and all(g[1] == w[1] and (g[0] is None or abs(g[0] - w[0]) < 0.005) for g, w in zip(got, want))
@@ -775,8 +786,24 @@ def always(P, c, sim, spec=None):
         out.append(f"notes on a transferred call: {led['notes']}")
     if len(led["transfers"]) > 1:
         out.append(f"more than one transfer: {led['transfers']}")
+    if len(by_id) == 1 and sim.mode == "orch":                    # one product: every day the agent itself names must be a day a promise can have
+        p, question = list(by_id.values())[0], sim.spec["confirmation"]["question"]
+        for line in sim.lines("negotiate"):
+            if not (question and question in line):
+                for a, d, _ in offers([line]):
+                    if not cal.allowed(day(d), p[pf["days_late"]], today):
+                        out.append(f"the agent itself named {d}, which is not a day a promise can have (today {today}, deadline {cal.deadline(p[pf['days_late']], today)}, "
+                                   f"business day: {cal.biz(day(d))})")
     lines = sim.lines()
+    named = any(isinstance(a, dict) and a.get("day") for st in c.get("steps") or [] if st[0] == "neg"
+                for a in [st[1].first] + list(st[1].then) + list(st[1].readback) + [st[1].offer])
+    # on a day no promise can have, a yes to "today" names today: then the sentence is right
+    named = named or any(cal.first_day(p[pf["days_late"]], today) != today for p in by_id.values())
     for text in lines:
+        if re.search(r"\b\d{4}-\d{2}-\d{2}\b", text):
+            out.append(f"a spoken line reads a date as digits: {text[:160]!r}")
+        if not named and re.search(r"\b(that|this) day is not possible\b", text, re.I):
+            out.append(f"the agent said a day is not possible although the customer named none: {text[:160]!r}")
         if "{" in text or "}" in text:
             out.append(f"a spoken line still has a placeholder: {text[:160]!r}")
         if re.search(r"\bNone\b|\bnan\b|\[\]|_response", text):
