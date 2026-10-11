@@ -1,0 +1,19 @@
+{
+  "team": "AYYA",
+  "members": [
+    {
+      "name": "Yaşar Delibaş",
+      "email": "yasar.delibas@outlook.com"
+    },
+    {
+      "name": "Alper Kabal",
+      "email": "alperkabal14@gmail.com"
+    }
+  ],
+  "repo": "https://github.com/AlperKabal/Freya-Hackathon",
+  "commit": "86129491b0f5c421bc8a7840e54b5bc42affab60",
+  "run_command": "cd build-the-builder && python3 builder/build.py {case_folder} https://freya-final-mock.yasardelibas33.workers.dev --slot yasar-exp-date --design ../submission/provenance/yasar-exp-date.design.json",
+  "workflow": "submission/final.workflow.json",
+  "trace": "traces/final.log",
+  "mock_url": "https://freya-final-mock.yasardelibas33.workers.dev"
+}
