@@ -206,7 +206,8 @@ def normalize_answer(kind, answer, hint=""):
             a = _re.sub(r"\s+", " ", a)
             # a code (the description speaks of spaces, characters, or letters with digits): the commas and full stops
             # that speech adds between its characters are not part of it, and its characters may come one by one
-            if _re.search(r"no spaces?|without (?:a |any )?spaces?|characters?\b|letters?\b.*\b(?:digits?|numbers?)|(?:digits?|numbers?)\b.*\bletters?", h):
+            if _re.search(r"no spaces?|without (?:a |any )?spaces?|characters?\b|alphanumeric|upper[- ]?case|capital letters|in capitals|"
+                          r"letters?\b.*\b(?:digits?|numbers?)|(?:digits?|numbers?)\b.*\bletters?", h):
                 plain = _re.sub(r"\s+", " ", _re.sub(r"[,.;:!?]+(?=\s|$)", " ", a)).strip()
                 a = _spelled(plain) or plain or a
             if _re.search(r"no spaces?|without (?:a |any )?spaces?", h):
