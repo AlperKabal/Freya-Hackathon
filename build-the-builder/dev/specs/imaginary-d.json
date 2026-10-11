@@ -1,0 +1,715 @@
+{
+ "spec_version": 1,
+ "meta": {
+  "bank_name": "Lakeside Cooperative Bank",
+  "language": "English",
+  "sources": [
+   "dev/specs/imaginary-d.md",
+   "dev/specs/imaginary-d.openapi.json"
+  ]
+ },
+ "call_variables": [
+  {
+   "name": "member_no",
+   "role": "customer_id",
+   "meaning": "Pass it to every tool call."
+  },
+  {
+   "name": "salutation",
+   "role": "name",
+   "meaning": "Mr, Ms, Dr ..."
+  },
+  {
+   "name": "surname",
+   "role": "name",
+   "meaning": "The member's family name."
+  },
+  {
+   "name": "call_time",
+   "role": "now",
+   "meaning": "The current date and time."
+  }
+ ],
+ "addressing": "{salutation} {surname}",
+ "tool_fields": {
+  "customer_id": "member_no",
+  "verify_identity": {
+   "field": "item",
+   "answer": "given"
+  },
+  "create_promise": {
+   "product_id": "facility",
+   "amount": "amount_due",
+   "date": "pay_date"
+  },
+  "add_note": {
+   "product_id": "facility",
+   "reason": "code",
+   "text": "comment"
+  },
+  "schedule_callback": {
+   "date": "on",
+   "time": "at"
+  },
+  "transfer_to_agent": {
+   "queue": "desk"
+  },
+  "close_call": {
+   "outcome": "result",
+   "reason": "why"
+  }
+ },
+ "agent": {
+  "self_description": "the virtual agent of Lakeside Cooperative Bank",
+  "style_rules": []
+ },
+ "opening": {
+  "first_sentence": "Hi, you are speaking with the virtual agent of Lakeside Cooperative Bank.",
+  "confirm_question": "Is this {salutation} {surname}?",
+  "forbidden_before_identity": [
+   "arrears",
+   "late",
+   "owe"
+  ],
+  "confirmations": [
+   "yes",
+   "the member's name"
+  ],
+  "non_confirmations": [],
+  "max_asks": 2,
+  "answer_question_first": true,
+  "unclear": {
+   "outcome": "not_reached",
+   "reason": "unclear"
+  }
+ },
+ "third_party": {
+  "enabled": false,
+  "instructions": [
+   "Do not say why you are calling."
+  ],
+  "callback": {
+   "enabled": false,
+   "include_today": false,
+   "business_days_ahead": 0,
+   "window_start": "09:00",
+   "window_end": "17:00",
+   "inclusive": true,
+   "after_now": true,
+   "max_asks": 0,
+   "scheduled": {
+    "outcome": "not_reached",
+    "reason": "unclear"
+   },
+   "not_scheduled": {
+    "outcome": "not_reached",
+    "reason": "unclear"
+   }
+  }
+ },
+ "identity": {
+  "questions": [
+   {
+    "field": "postcode",
+    "ask": "What is the postcode of your home address?",
+    "value_type": "text",
+    "answer_format": "as said, capital letters",
+    "conversion": "Remove spaces."
+   },
+   {
+    "field": "birth_date",
+    "ask": "And your date of birth?",
+    "value_type": "date",
+    "answer_format": "YYYY-MM-DD",
+    "conversion": "Send the date as YYYY-MM-DD."
+   },
+   {
+    "field": "member_since",
+    "ask": "In which year did you join the bank?",
+    "value_type": "year",
+    "answer_format": "YYYY",
+    "conversion": "Four digits."
+   }
+  ],
+  "one_at_a_time": true,
+  "max_wrong_total": 1,
+  "wrong_may_retry": false,
+  "hints": [],
+  "on_failed": {
+   "say": "I am sorry, I cannot go further on this call.",
+   "outcome": "identity_failed",
+   "reason": "wrong"
+  },
+  "decline": {
+   "explanation": "These questions keep your account safe.",
+   "max_declines": 2,
+   "purpose_question_counts": false,
+   "outcome": "identity_failed",
+   "reason": "refused"
+  },
+  "result_fields": {
+   "ok": "success",
+   "verified": "correct",
+   "all_verified": "passed",
+   "wrong_left": "tries_left",
+   "hint": ""
+  }
+ },
+ "account": {
+  "products_field": "facilities",
+  "product_fields": {
+   "id": "facility",
+   "type": "kind",
+   "past_due": "arrears",
+   "days_late": "late_days"
+  },
+  "product_types": [
+   {
+    "type": "mortgage",
+    "spoken_name": "mortgage",
+    "floor_field": "monthly"
+   },
+   {
+    "type": "credit_line",
+    "spoken_name": "credit line ending {line_ref}",
+    "floor_field": "min_pay"
+   },
+   {
+    "type": "student_loan",
+    "spoken_name": "student loan",
+    "floor_field": "monthly"
+   }
+  ],
+  "max_products": 3,
+  "statement_intro": "I am calling about overdue payments on your facilities.",
+  "statement_per_product": "Your {spoken_name} has {past_due} in arrears and is {days_late} days late."
+ },
+ "calendar": {
+  "business_weekdays": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ],
+  "holidays": [
+   "2026-10-16",
+   "2026-10-19",
+   "2026-11-02",
+   "2026-12-24",
+   "2026-12-25",
+   "2027-01-01"
+  ]
+ },
+ "bands": [
+  {
+   "name": "early",
+   "days_late_min": 1,
+   "days_late_max": 14,
+   "deadline": {
+    "kind": "last_business_day_of_month",
+    "month_offset": 0
+   },
+   "attempts": 1,
+   "ladder": [
+    {
+     "attempt": 1,
+     "date": {
+      "kind": "nth_business_day_after_today",
+      "n": 3
+     },
+     "amount": {
+      "kind": "full"
+     }
+    }
+   ]
+  },
+  {
+   "name": "middle",
+   "days_late_min": 15,
+   "days_late_max": 60,
+   "deadline": {
+    "kind": "nth_calendar_day_after_today",
+    "n": 10,
+    "roll": "previous_business_day"
+   },
+   "attempts": 2,
+   "ladder": [
+    {
+     "attempt": 1,
+     "date": {
+      "kind": "last_business_day_of_week",
+      "week_offset": 1,
+      "if_today_week_offset": 1
+     },
+     "amount": {
+      "kind": "full_or_floor_if_too_much"
+     }
+    },
+    {
+     "attempt": 2,
+     "date": {
+      "kind": "deadline"
+     },
+     "amount": {
+      "kind": "percent_of_full",
+      "percent": 60
+     }
+    }
+   ]
+  },
+  {
+   "name": "severe",
+   "days_late_min": 61,
+   "days_late_max": 120,
+   "deadline": {
+    "kind": "nth_business_day_after_today",
+    "n": 2
+   },
+   "attempts": 3,
+   "ladder": [
+    {
+     "attempt": 1,
+     "date": {
+      "kind": "deadline"
+     },
+     "amount": {
+      "kind": "floor"
+     }
+    },
+    {
+     "attempt": 2,
+     "date": {
+      "kind": "deadline"
+     },
+     "amount": {
+      "kind": "percent_of_full",
+      "percent": 60
+     }
+    },
+    {
+     "attempt": 3,
+     "date": {
+      "kind": "deadline"
+     },
+     "amount": {
+      "kind": "full"
+     }
+    }
+   ]
+  }
+ ],
+ "dates": {
+  "earliest": {
+   "kind": "nth_business_day_after_today",
+   "n": 1
+  },
+  "business_day_only": true,
+  "non_business_day": "reject",
+  "after_deadline": "reject",
+  "refused_deadline_is_flat_refusal": true,
+  "vague": {
+   "examples": [
+    "after payday",
+    "in a while"
+   ],
+   "ask_exact_times": 2,
+   "then": "flat_refusal"
+  },
+  "relative_weekday": {
+   "next": "upcoming",
+   "this": "upcoming"
+  }
+ },
+ "amounts": {
+  "first_offer": {
+   "kind": "full"
+  },
+  "never_ask_open_amount": true,
+  "accept_min": {
+   "kind": "floor"
+  },
+  "accept_max": {
+   "kind": "full"
+  },
+  "too_much": {
+   "offer": {
+    "kind": "floor"
+   },
+   "times": 1,
+   "say": "The remainder stays in arrears.",
+   "refused_is_flat_refusal": true
+  },
+  "below_min": {
+   "say": "I cannot accept less than that.",
+   "offer": {
+    "kind": "floor"
+   },
+   "times": 1,
+   "refused_is_flat_refusal": true
+  }
+ },
+ "negotiation": {
+  "first_ask": "Could you pay this tomorrow?",
+  "proposal_never_refusal": true,
+  "flat_refusal_definition": "A no with no date and no amount.",
+  "attempts_exhausted": {
+   "outcome": "unresolved",
+   "reason": "declined",
+   "note_reason": "declined"
+  },
+  "forbidden_offers": [
+   "a discount",
+   "a payment plan"
+  ],
+  "forbidden_questions": [
+   "How much can you pay?"
+  ],
+  "call_attempt_limit": 3
+ },
+ "confirmation": {
+  "read_back": [
+   "product",
+   "amount",
+   "date"
+  ],
+  "question": "Shall I put that through?",
+  "require_clear_yes": true,
+  "on_change": "revalidate_and_read_back",
+  "one_promise_per_product": true,
+  "after_record_change_say": ""
+ },
+ "recording": {
+  "max_attempts": 1,
+  "success_field": "success",
+  "after_success_say": "That is booked; a letter will follow.",
+  "retry_say": "",
+  "failure_say": "That did not go through, sorry.",
+  "on_final_failure": {
+   "outcome": "unresolved",
+   "reason": "system_down",
+   "note_reason": "system_down"
+  }
+ },
+ "situations": [
+  {
+   "id": "deceased",
+   "trigger": "The person says the member has died.",
+   "not_this": "A death in the member's family while the member is on the line is hardship.",
+   "stages": [
+    "opening"
+   ],
+   "say": "I am very sorry to hear that.",
+   "say_exact": true,
+   "guidance": "",
+   "first_response": "",
+   "threshold": 1,
+   "suppresses_persuasion": true,
+   "priority": 95,
+   "proposal_still_handled": false,
+   "scope": "call",
+   "effect": {
+    "actions": [],
+    "outcome": "not_reached",
+    "reason": "deceased"
+   },
+   "source": "D3"
+  },
+  {
+   "id": "hardship",
+   "trigger": "The member mentions illness, a death in the family or losing work.",
+   "not_this": "Saying the amount is too much, with no such event, is not hardship.",
+   "stages": [
+    "negotiation",
+    "confirmation"
+   ],
+   "say": "",
+   "say_exact": false,
+   "guidance": "Say one sentence of sympathy. Make no persuasion attempt.",
+   "first_response": "",
+   "threshold": 1,
+   "suppresses_persuasion": true,
+   "priority": 80,
+   "proposal_still_handled": true,
+   "scope": "call",
+   "effect": {
+    "actions": [
+     {
+      "type": "note",
+      "note_reason": "hardship"
+     }
+    ],
+    "outcome": "unresolved",
+    "reason": "hardship"
+   },
+   "source": "D24",
+   "offer": {
+    "question": "Offer to connect them with the welfare team.",
+    "on_accept": {
+     "actions": [
+      {
+       "type": "transfer",
+       "queue": "welfare"
+      }
+     ],
+     "outcome": "handed_over",
+     "reason": "welfare"
+    },
+    "on_decline": {
+     "actions": [
+      {
+       "type": "note",
+       "note_reason": "hardship"
+      }
+     ],
+     "outcome": "unresolved",
+     "reason": "hardship"
+    }
+   }
+  },
+  {
+   "id": "insolvency",
+   "trigger": "The member says they are bankrupt or in an insolvency procedure.",
+   "not_this": "Saying they have no money is a refusal.",
+   "stages": [
+    "negotiation",
+    "confirmation"
+   ],
+   "say": "",
+   "say_exact": false,
+   "guidance": "",
+   "first_response": "",
+   "threshold": 1,
+   "suppresses_persuasion": true,
+   "priority": 85,
+   "proposal_still_handled": false,
+   "scope": "call",
+   "effect": {
+    "actions": [
+     {
+      "type": "transfer",
+      "queue": "insolvency"
+     }
+    ],
+    "outcome": "handed_over",
+    "reason": "insolvency"
+   },
+   "source": "D25",
+   "evidence_words": [
+    "bankrupt",
+    "insolven",
+    "administration",
+    "liquidat"
+   ]
+  },
+  {
+   "id": "complaint",
+   "trigger": "The member complains about how one facility was handled.",
+   "not_this": "A refusal to pay is not a complaint.",
+   "stages": [
+    "negotiation",
+    "confirmation"
+   ],
+   "say": "I will pass your complaint on.",
+   "say_exact": true,
+   "guidance": "",
+   "first_response": "",
+   "threshold": 1,
+   "suppresses_persuasion": true,
+   "priority": 50,
+   "proposal_still_handled": false,
+   "scope": "product",
+   "effect": {
+    "actions": [
+     {
+      "type": "note",
+      "note_reason": "complaint"
+     }
+    ],
+    "outcome": "unresolved",
+    "reason": "complaint"
+   },
+   "source": "D26"
+  },
+  {
+   "id": "already_paid",
+   "trigger": "The member says they already paid this facility's arrears.",
+   "not_this": "",
+   "stages": [
+    "negotiation",
+    "confirmation"
+   ],
+   "say": "It can take two business days to show.",
+   "say_exact": true,
+   "guidance": "",
+   "first_response": "",
+   "threshold": 1,
+   "suppresses_persuasion": true,
+   "priority": 50,
+   "proposal_still_handled": false,
+   "scope": "product",
+   "effect": {
+    "actions": [
+     {
+      "type": "note",
+      "note_reason": "paid"
+     }
+    ],
+    "outcome": "paid",
+    "reason": ""
+   },
+   "source": "D27"
+  },
+  {
+   "id": "person",
+   "trigger": "The member asks to speak to a person.",
+   "not_this": "Asking whether they are talking to a robot is a question.",
+   "stages": [
+    "identity",
+    "negotiation",
+    "confirmation"
+   ],
+   "say": "",
+   "say_exact": false,
+   "guidance": "",
+   "first_response": "Ask once whether you can help them first.",
+   "threshold": 2,
+   "suppresses_persuasion": true,
+   "priority": 60,
+   "proposal_still_handled": false,
+   "scope": "call",
+   "effect": {
+    "actions": [
+     {
+      "type": "transfer",
+      "queue": "frontline"
+     }
+    ],
+    "outcome": "handed_over",
+    "reason": "frontline"
+   },
+   "source": "D28",
+   "evidence_words": [
+    "person",
+    "human",
+    "someone",
+    "agent",
+    "staff",
+    "real"
+   ]
+  }
+ ],
+ "faq": [
+  {
+   "trigger": "The member asks whether they are talking to a robot.",
+   "answer": "Say you are the bank's virtual agent, then continue.",
+   "source": "D1"
+  }
+ ],
+ "multi_product": {
+  "enabled": true,
+  "state_all_first": false,
+  "ask_all_today_once": false,
+  "first_ask_all": "",
+  "order": "as_returned",
+  "attempts_per_product": false,
+  "one_date_clamped_per_product": false,
+  "single_read_back": false,
+  "unrecorded_on_transfer": "record"
+ },
+ "notes": {
+  "enabled": true,
+  "for_each_product_without_promise": true,
+  "reasons": [
+   "declined",
+   "complaint",
+   "paid",
+   "hardship",
+   "system_down"
+  ],
+  "on_transfer": "none"
+ },
+ "outcomes": {
+  "table": [
+   {
+    "outcome": "booked",
+    "reasons": [],
+    "when": "at least one promise"
+   },
+   {
+    "outcome": "paid",
+    "reasons": [],
+    "when": "D27"
+   },
+   {
+    "outcome": "handed_over",
+    "reasons": [
+     "welfare",
+     "insolvency",
+     "frontline"
+    ],
+    "when": "D24, D25, D28"
+   },
+   {
+    "outcome": "unresolved",
+    "reasons": [
+     "declined",
+     "complaint",
+     "hardship",
+     "system_down"
+    ],
+    "when": "D21, D23, D24, D26"
+   },
+   {
+    "outcome": "identity_failed",
+    "reasons": [
+     "wrong",
+     "refused"
+    ],
+    "when": "D7, D8"
+   },
+   {
+    "outcome": "not_reached",
+    "reasons": [
+     "unclear",
+     "deceased"
+    ],
+    "when": "D2, D3, D4"
+   }
+  ],
+  "reason_omitted_for": [
+   "booked",
+   "paid"
+  ],
+  "promise": {
+   "outcome": "booked",
+   "reason": ""
+  },
+  "transfer_after_promise": "promise_wins",
+  "multi": {
+   "all_notes_match": {
+    "note_reason": "paid",
+    "outcome": "paid",
+    "reason": ""
+   },
+   "otherwise": {
+    "outcome": "unresolved",
+    "reason_from": "first_note_not_matching"
+   }
+  }
+ },
+ "closing": {
+  "farewell": "Goodbye and take care."
+ },
+ "free_rules": [
+  {
+   "id": "D13b",
+   "text": "A day that breaks the date rules is refused; do not suggest another day for it.",
+   "applies_to": [
+    "negotiation"
+   ],
+   "source": "D13"
+  }
+ ],
+ "rule_map": []
+}

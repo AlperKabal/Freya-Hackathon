@@ -25,6 +25,10 @@ def closings(docs, outcomes):
     rows = {o: [] for o in outcomes}
     code = lambda c: re.fullmatch(r"[a-z][a-z0-9_]*", c) is not None and c not in ("none", "na", "empty", "null")
     for d in docs:
+        # in running text: "close as `handed_over` / `welfare`"
+        for o, r in re.findall(r"`([a-z][a-z0-9_]*)`\s*/\s*`([a-z][a-z0-9_]*)`", str(d.get("text") or "")):
+            if o in rows and code(r) and r not in rows[o]:
+                rows[o].append(r)
         for line in str(d.get("text") or "").splitlines():
             cells = [c.strip().strip("`'\"*").strip() for c in re.split(r"[|,;\t]", line.strip().strip("|"))]
             if len(cells) < 2 or cells[0] not in rows:

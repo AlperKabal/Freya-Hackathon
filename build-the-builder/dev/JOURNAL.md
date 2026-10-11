@@ -658,3 +658,34 @@ audit done; not saved on Freya): `--spec` builds them in seconds once the platfo
 - Fix: the read-back is worded as the customer's own promise: "Let me read your promise back: you will pay 637.50
   ... Do you confirm?" (orch, `_read_back`); v1's task says the same in words. Test in `dev/test_tuning.py`.
 - The agent on Freya must be rebuilt (`--spec out/yasar-tune-a.spec.json`) to carry it; not done while the API is down.
+
+### Generalisation round 1 (11 October, offline while the platform answered 504)
+
+Principle: every failure is a rule the machine does not have yet; it is fixed at the layer that decides (code,
+sentence, classification, SPEC, noise) and tested on every bank. New bank **imaginary-d** (`dev/specs/imaginary-d.md`,
+reference SPEC and a tool API with other field names): no third party, a promise never for today ("Could you pay this
+tomorrow?"), refused days are refused (not moved), attempts counted for the whole call, a read-back per promise,
+promise_wins on transfer, three identity questions with one wrong answer ending the check.
+
+What D found, all fixed in `builder/`, none of it visible with A, B or C:
+- **The first ask was always about today.** A yes to "Could you pay this tomorrow?" was turned into "today" and
+  refused. The plan now carries `ask_day` (the SPEC's earliest day); a yes agrees on the first day a promise can
+  have. The per-product ask agrees on that day too (it agreed on today, also on a Saturday). v1's facts say so.
+- **"Could you make that payment" for another amount.** After the floor was named, every later offer below the full
+  amount dropped its amount: D's attempt 2 (60 percent) would have been agreed as "that payment" and recorded at
+  540 while the customer heard 150. The short form is now used only for the SAME amount said before with the note.
+- **"Too much" twice without a SPEC sentence** offered the floor again and again (`floor_offered` was only set with
+  the sentence). Now set whenever the floor is offered.
+- **A refused day dropped the customer's own amount**: "1000 on 30 October" (after the deadline, reject mode) went
+  back to the full amount. The amount now waits for another day ("On which day can you pay 1000.00 ...?").
+- **No day between the earliest day and the deadline** (last business day of the month = today, earliest tomorrow):
+  the agent agreed on today. The deadline is now moved to the earliest day, and ladder days never fall before it.
+- A day past the plan's 70-day list was said as an ISO date; it is now spoken with its weekday.
+- Fallback paths: `robust.bind` finds the product key as the field the promise request shares with the account's
+  products (D calls it `facility`); `robust.coerce` no longer raises a disabled callback's `max_asks`;
+  `minimal.closings` also reads "close as `x` / `y`" in running text.
+
+Tests: `dev/test_generalize.py` (new, by rule family); D added to test_properties (2160 random conversations),
+test_tuning, test_situation_guard, test_spec_schema, test_robust. Two properties were Brief-A-shaped and are now read
+from the SPEC (a day is checked against the SPEC's earliest day, not today; a read-back per promise).
+Known limit: `notes.on_transfer = "add"` has no field for the note's reason; D does not use it.

@@ -107,15 +107,25 @@ def one_run(spec, cfg, plan, today, rng, product_kinds):
             d = dt.date.fromisoformat(x["date"])
         except (TypeError, ValueError):
             broken.append(f"3 product {i + 1}: date {x['date']!r}"); continue
-        if d < today or (pp["deadline"] and d > dt.date.fromisoformat(pp["deadline"])) or (spec["dates"]["business_day_only"] and not business_day(spec, d)):
-            broken.append(f"3 product {i + 1}: date {x['date']} (today {today}, deadline {pp['deadline']}, business day {business_day(spec, d)})")
+        earliest = ns["apply_date_rule"](spec["dates"]["earliest"], today, codegen.date_config(spec)) or today
+        if d < earliest or (pp["deadline"] and d > dt.date.fromisoformat(pp["deadline"])) or (spec["dates"]["business_day_only"] and not business_day(spec, d)):
+            broken.append(f"3 product {i + 1}: date {x['date']} (today {today}, earliest {earliest}, deadline {pp['deadline']}, business day {business_day(spec, d)})")
         lower_step = any(st["amount"] < pp.get("first", pp["full"]) - 0.005 for st in pp["ladder"][:x["attempt"]])
         if x["amt"] < pp.get("first", pp["full"]) - 0.005 and not (x["too_much"] or amount_named or lower_step):
             broken.append(f"4 product {i + 1}: {x['amt']} agreed below the first offer {pp.get('first', pp['full'])} although nobody asked for less")
     if nxt == "record":
-        back = next((s for s in reversed(says) if s), "")
+        # one read-back of everything: the last sentence; one read-back per promise (the SPEC's choice): the last
+        # read-back that named this product
+        single = spec["multi_product"]["single_read_back"] or len(plan) == 1
+        backs = [s[len("ASK_FIRST: "):] if s.startswith("ASK_FIRST: ") else s for s in says if s]
         for i, x in enumerate(state["p"]):
-            if x["status"] == "agreed" and not (("%.2f" % x["amt"]) in back and plan[i]["spoken"].get(x["date"], x["date"]) in back):
+            if x["status"] != "agreed":
+                continue
+            if single:
+                back = backs[-1] if backs else ""
+            else:
+                back = next((b for b in reversed(backs) if b.startswith("Let me read") and " for your " + plan[i]["name"] + " on " in b), "")
+            if not (("%.2f" % x["amt"]) in back and plan[i]["spoken"].get(x["date"], x["date"]) in back):
                 broken.append(f"7 product {i + 1}: recorded {x['amt']} on {x['date']}, the read-back said {back!r}")
     if broken:
         broken.append("events: " + json.dumps(events))
@@ -151,6 +161,13 @@ for i, t in enumerate(C_SPEC["account"]["product_types"]):
     band = C_SPEC["bands"][i % len(C_SPEC["bands"])]
     items.append({pf["id"]: f"x{i + 1}", pf["type"]: t["type"], pf["past_due"]: 5000.0 + 100 * i, pf["days_late"]: band["days_late_max"], t["floor_field"]: 1200.0})
 BANKS.append(("imaginary bank C (six-day week, other bands and names)", C_SPEC, C_TOOLS, [items, items[:1], items[1:2]]))
+D_SPEC = load("dev/specs/imaginary-d.json")
+D_TOOLS = parse_openapi(KIT / "dev/specs/imaginary-d.openapi.json")["tools"]
+D_MORT = {"facility": "f1", "kind": "mortgage", "arrears": 2400.0, "late_days": 20, "monthly": 800.0}
+D_LINE = {"facility": "f2", "kind": "credit_line", "arrears": 500.0, "late_days": 5, "min_pay": 50.0, "line_ref": "7731"}
+D_STUD = {"facility": "f3", "kind": "student_loan", "arrears": 900.0, "late_days": 90, "monthly": 150.0}
+BANKS.append(("imaginary bank D (earliest tomorrow, refused days, attempts per call, one read-back each)", D_SPEC, D_TOOLS,
+              [[D_MORT, D_LINE, D_STUD], [D_STUD], [D_LINE, D_MORT]]))
 
 DAYS = [dt.date(2026, 10, 14), dt.date(2026, 10, 16), dt.date(2026, 10, 17), dt.date(2026, 10, 23), dt.date(2026, 10, 26), dt.date(2026, 10, 30),
         dt.date(2026, 11, 10), dt.date(2026, 11, 25), dt.date(2026, 12, 24), dt.date(2026, 12, 31), dt.date(2027, 1, 1), dt.date(2027, 2, 26)]
@@ -167,7 +184,8 @@ for name, spec, tools, mixes in BANKS:
                 broken = one_run(spec, cfg, plan, day, random.Random(f"{name}|{len(products)}|{day}|{seed}"), product_kinds)
                 if broken:
                     bad.append((day.isoformat(), len(products), seed, broken))
-            for kind, limit in (("refuse", 4 * len(plan) + 2), ("accept", 3)):
+            reads = 1 if spec["multi_product"]["single_read_back"] else len(plan)       # a yes to each read-back is a turn
+            for kind, limit in (("refuse", 4 * len(plan) + 2), ("accept", 2 + reads + (len(plan) - 1 if reads > 1 else 0))):
                 turns = steady(cfg, plan, day, kind)
                 if turns is None or turns > limit:
                     endless.append((day.isoformat(), len(products), kind, turns))

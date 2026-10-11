@@ -377,7 +377,8 @@ check("v1: a question about options is no situation", "A question about what els
 check("v1: the rules come before the situations in the prompt", task.index("\nRULES\n") < task.index("\nOTHER SITUATIONS\n"), True)
 tool_calls = {t["target_node"]: t["description"] for t in v1["nodes"]["negotiate_1"]["transitions"] if t.get("is_tool_call")}
 check("v1: the transfer tool's description carries what it is NOT", "NOT this: " + PLAN_SIT["not_this"] in tool_calls["do_restructuring_transfer0"], True)
-for spec, tools, name in ((SPEC_A, TOOLS, "brief-a"), (SPEC_AB, TOOLS, "brief-ab"), (load("dev/specs/imaginary-c.json"), parse_openapi(KIT / "dev/specs/imaginary-c.openapi.json")["tools"], "imaginary-c")):
+for spec, tools, name in ((SPEC_A, TOOLS, "brief-a"), (SPEC_AB, TOOLS, "brief-ab"), (load("dev/specs/imaginary-c.json"), parse_openapi(KIT / "dev/specs/imaginary-c.openapi.json")["tools"], "imaginary-c"),
+                          (load("dev/specs/imaginary-d.json"), parse_openapi(KIT / "dev/specs/imaginary-d.openapi.json")["tools"], "imaginary-d")):
     for mode in ("v1", "orch"):
         w = generate.build(spec, tools, mode)
         check(f"{name} {mode}: lint and local runs pass", (verify.lint(w, spec, tools), verify.run_snippets(w, spec, days=["2026-10-14", "2026-10-16", "2026-12-24"])), ([], []))

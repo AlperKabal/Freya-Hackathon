@@ -64,7 +64,10 @@ def bind(tools):
     field = _pick(vi, words=("field", "question", "kind", "check", "type"), enum=True)
     answer = _pick(vi, words=("answer", "value", "response", "reply"), exclude=(field,), last=True)
     cp = rest("create_promise")
-    pid = _pick(cp, words=("product", "item", "contract", "loan"))
+    acct = _resp(tools, "get_account")
+    acct_items = next((v.get("items") for v in acct.values() if v.get("items")), None) or {}
+    # the product's key is the one field the promise request shares with the account's products, whatever it is called
+    pid = _pick(cp, words=("product", "item", "contract", "loan")) or next((k for k, v in cp.items() if k in acct_items and v.get("type") in ("string", None)), "")
     amount = _pick(cp, words=("amount", "sum", "value", "payment"), types=NUM, exclude=(pid,))
     date = _pick(cp, words=("date", "day", "when", "due"), fmt=("date", "date-time"), exclude=(pid, amount), last=True)
     an = rest("add_note")
@@ -89,7 +92,7 @@ def bind(tools):
     ar = _resp(tools, "get_account")
     products = next((k for k, v in ar.items() if v.get("items")), "")
     items = (ar.get(products) or {}).get("items") or {}
-    p_id = _pick(items, words=("product_id", "id"))
+    p_id = _pick(items, words=("product_id", "id")) or (pid if pid in items else "")
     p_type = _pick(items, words=("type", "kind", "category"), enum=True, exclude=(p_id,))
     p_due = _pick(items, words=("past_due", "overdue", "due", "arrears", "outstanding", "amount", "balance"), types=NUM, exclude=(p_id, p_type))
     p_days = _pick(items, words=("days_late", "days", "late", "dpd", "delay", "overdue"), types=NUM, exclude=(p_id, p_type, p_due))
@@ -448,7 +451,8 @@ def _mend(spec, tools, base, say):
     cal["business_weekdays"] = sorted({d for d in cal["business_weekdays"] if isinstance(d, int) and 0 <= d <= 6}) or [0, 1, 2, 3, 4]
     cb = spec["third_party"]["callback"]
     cb["window_start"], cb["window_end"] = _hhmm(cb["window_start"], "09:00"), _hhmm(cb["window_end"], "18:00")
-    cb["max_asks"] = max(1, cb["max_asks"])
+    if cb["enabled"]:                                     # a callback the brief does not have keeps its zero
+        cb["max_asks"] = max(1, cb["max_asks"])
     bands, last = [], None
     for band in sorted(spec["bands"], key=lambda x: x["days_late_min"]):
         if band["days_late_min"] > band["days_late_max"]:

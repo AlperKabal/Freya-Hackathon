@@ -180,6 +180,7 @@ def new_state(plan):
 # common ladder: first the full amount, accept floor..full, offer the floor when it is too much or too low
 def _first(pp): return pp.get("first", pp["full"])
 def _day1(pp): return pp.get("first_day", pp["today"])       # the first day a promise can have: today, unless today is no business day
+def _ask(pp): return pp.get("ask_day", pp["today"])          # the day the first ask is about: the SPEC's earliest day (today, tomorrow, ...)
 def _lo(pp): return pp.get("lo", pp["floor"])
 def _hi(pp): return pp.get("hi", pp["full"])
 def _tm(pp): return pp.get("tm", pp["floor"])
@@ -191,17 +192,27 @@ def _open(state):
 
 
 def _day(pp, iso):
-    return pp["spoken"].get(iso, iso)
+    if iso in pp["spoken"]:
+        return pp["spoken"][iso]
+    try:
+        return spoken(_dt.date.fromisoformat(iso))           # a day past the plan's short list still has its weekday
+    except (TypeError, ValueError):
+        return str(iso)
 
 
 def _offer_text(pp, x, cfg, new_floor=False):
-    """The floor amount is named once (with the SPEC's sentence); later offers of it name only the date."""
-    if x["offer_amt"] < pp["full"] and x["floor_offered"] and not new_floor:
+    """An amount below the full one is named once, with the SPEC's sentence; a later offer of that SAME amount names
+    only the date. Another amount (a later step of the ladder, the customer's own) is always said in full."""
+    amt = x["offer_amt"]
+    named = x.get("named_amt")
+    if amt < pp["full"] and not new_floor and named is not None and abs(amt - named) < 0.005:
         return "Could you make that payment for your " + pp["name"] + " on " + _day(pp, x["offer_date"]) + "?"
-    s = "Can you pay " + money(x["offer_amt"]) + " for your " + pp["name"] + " on " + _day(pp, x["offer_date"]) + "?"
-    if x["offer_amt"] < pp["full"] and cfg.get("too_much_say"):
+    s = "Can you pay " + money(amt) + " for your " + pp["name"] + " on " + _day(pp, x["offer_date"]) + "?"
+    if amt < pp["full"] and cfg.get("too_much_say"):
         s += " " + cfg["too_much_say"]
-        x["floor_offered"] = True
+        x["named_amt"] = amt
+    if amt < pp["full"] and (new_floor or abs(amt - _tm(pp)) < 0.005):
+        x["floor_offered"] = True                            # also without a sentence: "too much" again is then a refusal of it
     return s
 
 
@@ -293,8 +304,10 @@ def _next_product(state, plan, cfg):
             lead = pp.get("statement", "")
         if _per_product_today(plan, cfg) and not x.get("asked_today"):
             x["asked_today"] = True
-            x["offer_amt"], x["offer_date"] = _first(pp), pp["today"]
-            generic = "Can you pay " + money(_first(pp)) + " for your " + pp["name"] + " today?"
+            # a yes agrees on the first day a promise can have (never on a day the rules refuse)
+            x["offer_amt"], x["offer_date"] = _first(pp), _day1(pp)
+            when = "today" if _day1(pp) == pp["today"] else "on " + _day(pp, _day1(pp))
+            generic = "Can you pay " + money(_first(pp)) + " for your " + pp["name"] + " " + when + "?"
             ask = (cfg.get("first_ask") or generic) if lead else generic
             return "talk", (lead + " " + ask).strip()
         if _ladder_offer(pp, x, state, cfg):
@@ -487,13 +500,14 @@ def _step(state, ev, plan, today, cfg):
                 return _date_for_all(state, day["date"], plan, today, cfg)
             state["cursor"] = 0
             return _on_product(state, kind, day, amount, plan, today, cfg)
-        if kind == "accept" and all(_day1(pp) == pp["today"] for pp in plan):
+        # the first ask is about the SPEC's earliest day (today in most briefs, "tomorrow" in some): a yes names that day
+        if kind == "accept" and all(_day1(pp) == _ask(pp) for pp in plan):
             for i, x in enumerate(state["p"]):
-                _agree(x, _first(plan[i]), plan[i]["today"])
+                _agree(x, _first(plan[i]), _day1(plan[i]))
             nxt, say = _finish(state, plan, cfg)
             return state, say, nxt
-        if kind == "accept":                             # a yes to today, on a day no promise can have: today is what they named
-            kind, day = "propose", {"status": "exact", "date": today.isoformat()}
+        if kind == "accept":                             # a yes to a day no promise can have (a weekend day): that day is what they named
+            kind, day = "propose", {"status": "exact", "date": _ask(plan[0])}
         # one date for several products (multi-product rule: each on its own deadline if needed, said in the read-back);
         # a single product goes through the single-product rules (a late date is offered as the deadline first)
         if multi and kind == "propose" and day["status"] == "exact" and (_to_all(ev.get("about"), multi) or not ev.get("about")) and amount is None:
@@ -535,6 +549,11 @@ def _on_product(state, kind, day, amount, plan, today, cfg):
             return state, "On which day can you pay " + money(amt) + " for your " + pp["name"] + "?", "talk"
         d, changed, why = _check_day(day["date"], pp, today, cfg)
         if d is None:
+            if amount is not None and abs(amt - x["offer_amt"]) >= 0.005:
+                # the day is refused, the customer's own amount is not: it waits for another day (a proposal is never a refusal)
+                state["pending_amount"] = amt
+                x["offer_amt"] = amt
+                return state, "That day is not possible. On which day can you pay " + money(amt) + " for your " + pp["name"] + "?", "talk"
             return state, "That day is not possible. " + _offer_text(pp, x, cfg), "talk"
         if changed:
             x["offer_amt"], x["offer_date"] = amt, d

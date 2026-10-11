@@ -668,10 +668,23 @@ try:
             name = _fill(typ['spoken_name'], p) if typ else str(p.get(pf['type'])).replace('_', ' ')
             band = band_for(days, CFG)
             deadline = deadline_for(band, today, CFG) if band else None
+            first_day = today
+            for _ in range(40):                          # today, unless a promise cannot have today (a weekend day, a holiday, a later earliest day)
+                v0 = check_promise_date(first_day, today, None, CFG)
+                if v0['verdict'] in ('ok', 'offer') and v0['date']:
+                    first_day = _dt.date.fromisoformat(v0['date'])
+                    break
+                first_day = first_day + _dt.timedelta(days=1)
+            else:
+                first_day = today
+            if deadline and deadline < first_day:        # no day fits between the earliest day and the deadline: the earliest day is the deadline
+                deadline = first_day
             steps, lad = [], []
             if band:
                 for st in band['ladder']:
                     d = apply_date_rule(st['date'], today, CFG, deadline)
+                    if d and d < first_day:              # an offer is never for a day before the earliest one
+                        d = first_day
                     if d and deadline and d > deadline:
                         d = deadline
                     k = st['amount'].get('kind')
@@ -700,19 +713,14 @@ try:
                               + '; below ' + _money(am['accept_min']) + ', offer ' + _money(am['below_min']) + '.')
             if not CFG.get('state_all_first', True):
                 facts[-1] += '. Statement (say it when you start this product): ' + intro[-1]
-            first_day = today
-            for _ in range(15):                          # today, unless a promise cannot have today (a weekend day, a holiday)
-                v0 = check_promise_date(first_day, today, deadline, CFG)
-                if v0['verdict'] in ('ok', 'offer') and v0['date']:
-                    first_day = _dt.date.fromisoformat(v0['date'])
-                    break
-                first_day = first_day + _dt.timedelta(days=1)
-            else:
-                first_day = today
-            if first_day != today:                       # the prompt-driven mode reads it in the FACTS; the state machine in the plan
+            ask_day = apply_date_rule(CFG['earliest'], today, CFG, deadline) or today      # the day the first ask is about
+            if first_day == ask_day and ask_day != today:  # the prompt-driven mode reads it in the FACTS; the state machine in the plan
+                facts[-1] += (' A PROMISE CANNOT BE FOR TODAY: the earliest day is ' + spoken(first_day) + ' (' + first_day.isoformat()
+                              + '); a yes to the first question means that day.')
+            elif first_day != today:
                 facts[-1] += (' TODAY IS NOT A DAY A PROMISE CAN HAVE for this product: if the customer can pay today, offer '
                               + spoken(first_day) + ' (' + first_day.isoformat() + ') instead.')
-            plan.append(dict(name=name, full=round(full, 2), floor=round(min(floor, full), 2), today=today.isoformat(), first_day=first_day.isoformat(), statement=intro[-1],
+            plan.append(dict(name=name, full=round(full, 2), floor=round(min(floor, full), 2), today=today.isoformat(), first_day=first_day.isoformat(), ask_day=ask_day.isoformat(), statement=intro[-1],
                              first=am['first_offer'], lo=min(am['accept_min'], am['accept_max']), hi=am['accept_max'], tm=am['too_much'], bm=am['below_min'],
                              deadline=deadline.isoformat() if deadline else '', ladder=lad, spoken=spoken_days))
         # A short calendar: weekdays and deadlines only. Named days are checked by the date_check code node,

@@ -123,7 +123,9 @@ def builds(spec, tools):
     return True
 
 
-for name, tools, spec in (("brief-a", TOOLS, SPEC_A), ("brief-ab", TOOLS, SPEC_AB), ("imaginary-c", C_TOOLS, SPEC_C)):
+D_TOOLS = ingest.parse_openapi(KIT / "dev/specs/imaginary-d.openapi.json")["tools"]
+SPEC_D = load("dev/specs/imaginary-d.json")
+for name, tools, spec in (("brief-a", TOOLS, SPEC_A), ("brief-ab", TOOLS, SPEC_AB), ("imaginary-c", C_TOOLS, SPEC_C), ("imaginary-d", D_TOOLS, SPEC_D)):
     fixed, notes, left = robust.coerce(copy.deepcopy(spec), tools)
     check(f"{name}: a valid SPEC comes back unchanged", (fixed == spec, notes, left), (True, [], []))
     bad = []
@@ -295,7 +297,8 @@ extract.ask_json = real_ask_json
 for name, briefs, tools, want in (
         ("Brief A (a table)", [KIT / "briefs/brief-a.md"], TOOLS, 16),
         ("raw material (a CSV code list)", sorted((KIT / "dev/specs/raw-a").glob("*")), TOOLS, 16),
-        ("imaginary bank C", [KIT / "dev/specs/imaginary-c.md"], C_TOOLS, 13)):
+        ("imaginary bank C", [KIT / "dev/specs/imaginary-c.md"], C_TOOLS, 13),
+        ("imaginary bank D (closings in running text)", [KIT / "dev/specs/imaginary-d.md"], D_TOOLS, 11)):
     docs = ingest.read_briefs(briefs)
     wf, shim = minimal.build(docs, tools)
     exits = [k for k in wf["nodes"] if k.startswith("end_")]

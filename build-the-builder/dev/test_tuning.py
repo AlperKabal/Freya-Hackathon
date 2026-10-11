@@ -36,7 +36,8 @@ def load(path):
 
 TOOLS = parse_openapi(KIT / "tools/openapi.json")["tools"]
 SPECS = [("brief-a", load("dev/specs/brief-a.json"), TOOLS), ("brief-ab", load("dev/specs/brief-ab.json"), TOOLS),
-         ("imaginary-c", load("dev/specs/imaginary-c.json"), parse_openapi(KIT / "dev/specs/imaginary-c.openapi.json")["tools"])]
+         ("imaginary-c", load("dev/specs/imaginary-c.json"), parse_openapi(KIT / "dev/specs/imaginary-c.openapi.json")["tools"]),
+         ("imaginary-d", load("dev/specs/imaginary-d.json"), parse_openapi(KIT / "dev/specs/imaginary-d.openapi.json")["tools"])]
 MARK = "__CODE_EXEC" + "_RESULT__"
 
 # ---------------------------------------------------------------- 1. the marker scrub

@@ -78,9 +78,10 @@ class Call:
                     exec(fn["pre_process_code"], {"vars": self.v, "config": {"body": body}})
                 tool = self.by_url[props["url"]["default"]]
                 self.calls.append((tool, body))
-                data = self.answers.get(tool, {"ok": True})
+                ok = {"ok": True, self.spec["recording"]["success_field"]: True}     # the bank's own success field
+                data = self.answers.get(tool, ok)
                 if isinstance(data, list):
-                    data = data.pop(0) if data else {"ok": True}
+                    data = data.pop(0) if data else ok
                 for m in n.get("response_mapping") or []:
                     cur = {"data": data}
                     for part in m["path"].split("."):
