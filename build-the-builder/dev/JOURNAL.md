@@ -736,3 +736,50 @@ ask which day suits, and `reject` is one value (listed under "Rules the SPEC can
 `dev/walk_practice.py` (new) plays the 13 practice customers through the walker and scores the records with
 `tools/score.py`: 13 of 13 on the reference SPECs, in two seconds. It checks what code decides, not the conversation.
 
+### Platform runs after the merge (11 October, ~14:30-15:20 UTC), slot `yasar-exp-date`, agents from the reference SPECs
+
+Run from a second machine. Python there needs `export SSL_CERT_FILE=/etc/ssl/cert.pem` (a python.org build without
+its certificates); the slot's workflow id was read from the workflow list and written to `.freya-agents.json`, so
+nothing new was created in the workspace. Results in `results/check-*.json` (not committed).
+
+| Agent (code) | What | Result | Failed | Cause |
+|---|---|---|---|---|
+| A, orch (`b36ee71`) | Brief A, 1 run | 8/10 | PUB-06, PUB-08 | PUB-08: "analysis never arrived" (the call itself was right). PUB-06: see below |
+| same | PUB-06 and PUB-08, 3 runs | PUB-08 3/3, PUB-06 1/3 | PUB-06 | one call ended with no promise at all |
+| A, orch (`e1536cf`) | PUB-06, 3 runs | 3/3 | - | |
+| same | Brief A, 1 run | **10/10** | - | |
+| A+B, orch (`e1536cf`) | Brief B, 1 run | **3/3** | - | |
+| same | RULE-B-both-paid, RULE-B-paid-and-refused, RULE-B-dispute-one | 2/3 | RULE-B-dispute-one | see below |
+
+- **PUB-06, the cause that four calls share.** The floor was offered as a bare number ("Can you pay 637.50 for your
+  credit card ending 1903 on Wednesday 14 October 2026? The rest stays overdue."). The customer's script waits for
+  "the minimum payment" and did not take the number for it: she answered "You tell me", "How much is the minimum
+  payment?" or "I can't pay that much", which cost a persuasion attempt and a second mention of the floor (the judge
+  counts it), and once the whole promise: the answering step named the full amount and "that payment" then read as
+  it. Fix (`e1536cf`): an offer of a product's lowest amount names it with the words of its field ("the minimum
+  payment of 637.50", "the instalment amount of 700.00"), when those words end as a thing one can pay; and the
+  answering step is told what is on the table. In all three runs after it the customer said "I can do the minimum
+  payment this Friday" at once.
+- **The "already paid" sentence at the close** (fixed in `bb8e28e`) is confirmed by the judge: RULE-B-both-paid and
+  RULE-B-paid-and-refused pass on the A+B agent.
+- **RULE-B-dispute-one: the dispute went to the wrong product.** "The credit card debt is not mine because I never
+  had that card. I cannot pay the loans today." was classified as a dispute, and `about_text` came back as "the
+  loans" (the last product named), so the personal loan was noted as disputed and the card was then asked for. Fix:
+  the product extraction is told that a message which says one of the SPEC's product-scope situations about a
+  product names THAT product, also when it goes on to others; and a plural of a word several product names share
+  ("the loans") means each of those products for a situation.
+- **The close is known as soon as a promise is recorded**: `rec_ok_<i>` now writes the promise outcome. In one slow
+  call both promises were recorded, the customer hung up while the notes were on their way, and `close_call` went out
+  with the opening's default (`not_reached` / `unclear`). Not yet run on the platform (see below).
+- **The platform stopped answering at about 15:14 UTC.** Every call hangs after the customer's first reply (no
+  extraction event at all) and the customer hangs up after 60 seconds; `yasar-tune-a`, which passed earlier, fails
+  the same way. Runs from then on say nothing about the agent.
+- **What a slow platform shows about our agent.** A customer waits about 60 seconds. After "Yes, I confirm" a
+  three-product call runs about 15 sandbox executions (the negotiation step, then per product a gate, the promise
+  hook and a node that marks it, then a gate per note, the close and the farewell). At 1 to 2 seconds each that is
+  the "slowest agent turn" of 9 to 16 seconds the runs report; at 7 seconds each (measured in one call) it is more
+  than a customer waits. Fewer nodes at the end of the call is the open work with the most value; it needs the
+  platform to be tested.
+- For the next session: `dev/HANDOFF_NEXT.md`; `dev/attach_slot.py` points a fresh clone's slot at an existing
+  workflow so no new one is created.
+

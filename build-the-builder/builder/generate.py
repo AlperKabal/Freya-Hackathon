@@ -1091,7 +1091,11 @@ except Exception:
                  enum=["yes", "no"]),
             extr("day_text", "The payment day the customer names in the LATEST message, copied exactly as said ('tomorrow', 'next Friday', 'the 26th'). Empty if none."),
             extr("amount_text", "The amount the customer names in the LATEST message, copied exactly as said ('two hundred', '150'). Empty if none."),
-            extr("about_text", "Which product the LATEST message is about, copied as said ('the car loan', 'all of them'). Empty if not said.")]
+            extr("about_text", "Which product the LATEST message is about, copied as said ('the car loan', 'all of them'). "
+                 + ("When the message says one of these things about a product, copy THAT product, also when the message then goes on to other products: "
+                    + " | ".join(x["trigger"].strip().rstrip(".") for x in neg_sits if x["id"] in nc["product_situations"]) + ". "
+                    if nc["product_situations"] else "")
+                 + "Empty if not said.")]
         if evidence:
             # the customer's own words, for the evidence check in code; a copy needs no confidence gate
             self.orch_extraction.append(extr("said_text", "The customer's LATEST message, copied word for word, without shortening or rewording it.", conf=0.05))
@@ -1226,7 +1230,11 @@ except Exception as e:
                 self.nodes[name] = api_node(name, self.api_fn("create_promise", body, [f["amount"], f["date"]], pre=pre),
                                             [tr(okn, "recorded", truthy(var)), tr(fail_to, "not recorded")],
                                             mapping=[{"path": "data." + ok, "variable": var}], say=(self.ph(rec["retry_say"]) if t > 1 else ""))
-            self.nodes[okn] = code_node(okn, codegen.embed({}, f"vars['res_{i}'] = 'promise'\n", snippets=()), [tr(nxt, "always")])
+            # the close is known from here on: if the customer hangs up while the notes and the farewell are still on
+            # their way, close_call says "promise", not the opening's default
+            po = self.s["outcomes"]["promise"]
+            self.nodes[okn] = code_node(okn, codegen.embed({"o": po["outcome"], "r": po["reason"]},
+                                                          f"vars['res_{i}'] = 'promise'\nvars['outcome'] = CFG['o']\nvars['reason'] = CFG['r']\n", snippets=()), [tr(nxt, "always")])
             # the note that follows overwrites res_<i>: rec_failed keeps the fact for the close, so the customer is told
             self.nodes[failn] = code_node(failn, codegen.embed({}, f"vars['res_{i}'] = 'failed'\nvars['rec_failed'] = 'yes'\n", snippets=()), [tr(nxt, "always")])
         return f"{prefix}_gate_1"

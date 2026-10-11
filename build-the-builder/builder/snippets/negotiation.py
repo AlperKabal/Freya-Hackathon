@@ -286,6 +286,14 @@ def _meant(about, plan, state, multi):
     Several ("both", "all of them", "both loans"): every open product, or the open ones whose name fits best."""
     a = str(about or "").lower()
     if not _to_all(about, multi):
+        # a plural of a word that several product names share ("the loans") means each of those products
+        said = _re.findall(r"[a-z0-9]+", a)
+        for w in sorted(set(w for pp in plan for w in _re.findall(r"[a-z0-9]+", pp["name"].lower()) if len(w) > 2)):
+            having = [i for i, pp in enumerate(plan) if w in _re.findall(r"[a-z0-9]+", pp["name"].lower())]
+            if len(having) > 1 and (w + "s") in said:
+                still = [i for i in having if state["p"][i]["status"] == "open"]
+                if still:
+                    return still
         return [_which(about, plan, state["cursor"])]
     score = [sum(1 for w in _re.findall(r"[a-z0-9]+", pp["name"].lower()) if len(w) > 2 and w in a) for pp in plan]
     top = max(score)
