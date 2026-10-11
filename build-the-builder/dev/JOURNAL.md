@@ -646,3 +646,15 @@ audit done; not saved on Freya): `--spec` builds them in seconds once the platfo
 - Fresh-extraction SPECs of this morning saved as orch agents with `--spec`: `yasar-tune-a` (agent `2c7148d5`),
   `yasar-tune-ab` (agent `62a00865`, version 2: its opening said "this call is recorded" because the Reworder's
   answer still held "recorded" and was dropped silently; fixed in `184897c` and the SPEC re-run through it).
+
+### orch PUB-06, rep 2 (11 October, ~10:35 UTC): the read-back counted as a second floor offer
+
+- Sim `929efc9f`, PUB-06 judged **fail**: "the minimum payment (637.50) was offered in Message 8 and then again in
+  Message 10 for a different date ... the second offer did not include the note that the rest stays overdue".
+  Rep 1 of the same agent passed the same flow. Replayed with `dev/walk.py` (the platform answered 504 again): the
+  floor is offered for today ("Can you pay 637.50 ... on Wednesday 14 October 2026? The rest stays overdue."), the
+  customer names Friday, and the read-back "So that is 637.50 ... on Friday 16 October 2026. Do you confirm?" reads
+  like a new offer of the floor on another day. Code did the right thing (one offer, one promise 637.50 / 16 Oct).
+- Fix: the read-back is worded as the customer's own promise: "Let me read your promise back: you will pay 637.50
+  ... Do you confirm?" (orch, `_read_back`); v1's task says the same in words. Test in `dev/test_tuning.py`.
+- The agent on Freya must be rebuilt (`--spec out/yasar-tune-a.spec.json`) to carry it; not done while the API is down.

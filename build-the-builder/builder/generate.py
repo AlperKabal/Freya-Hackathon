@@ -803,6 +803,7 @@ except Exception:
                if self.flag("single_read_back") else
                f"E. Confirm. As soon as one product's promise is agreed, read back {', '.join(conf['read_back'])} of that promise alone, with the date's day name, and ask '{conf['question']}'. "
                + ("Only after a clear yes, CALL that product's create_promise tool, then continue with the next product. " if conf["require_clear_yes"] else "Then CALL that product's create_promise tool and continue with the next product. "))
+            + "Word the read-back as the customer's own promise ('Let me read your promise back: you will pay ...'), never as a new offer. "
             + "Saying it is recorded is not enough; you must call the tool. If the customer changes a date or an amount at the read-back, check it against A and B and read back again. "
             + (f"{conf['after_record_change_say']} " if conf["after_record_change_say"] else "")
             + "F. Follow the what_to_do_next line in every tool result exactly. Never tell the customer anything is recorded unless its tool result says so. "

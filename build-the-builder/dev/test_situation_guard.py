@@ -130,7 +130,7 @@ state, says, nxt = run(A, [EARLY], [E("refuse"), U])
 check("early band (one attempt) after its attempt: repeated, not closed", (nxt, state["p"][0]["attempt"]), ("talk", 1))
 state, says, nxt = run(A, [CARD], [E("accept"), U])
 check("at the read-back, unconfirmed: answer first, read back again, nothing dropped",
-      (nxt, state["p"][0]["status"], says[1].startswith("ASK_FIRST: So that is 365.00"), says[1].endswith("Do you confirm?")), ("talk", "agreed", True, True))
+      (nxt, state["p"][0]["status"], says[1].startswith("ASK_FIRST: Let me read your promise back: you will pay 365.00"), says[1].endswith("Do you confirm?")), ("talk", "agreed", True, True))
 state, says, nxt = run(A, [CARD], [E(UNCONFIRMED, day="Friday")])
 check("unconfirmed with a day named: a proposal, never a refusal", (state["p"][0]["status"], state["p"][0]["date"]), ("agreed", "2026-10-16"))
 state, says, nxt = run(A, [CARD], [E(UNCONFIRMED, day="next week")])
@@ -247,7 +247,7 @@ check("the reported reply: then attempt 1 word for word", c.v["say_text"], FRIDA
 check("the reported reply: the instruction names no alternative", c.v["say_instr"].startswith("The customer asked for something you cannot offer on this call."), True)
 check("the consumed kind and words are reset", (c.v["reply_kind"], c.v["said_text"]), ("unclear", ""))
 check("the customer agrees: read-back by the fixed line", (c.say("accept", "Yes, I can do that."), c.v["say_text"]),
-      ("negotiate", "So that is 365.00 for your credit card ending 7740 on Friday 16 October 2026. Do you confirm?"))
+      ("negotiate", "Let me read your promise back: you will pay 365.00 for your credit card ending 7740 on Friday 16 October 2026. Do you confirm?"))
 check("the customer confirms: the call ends", c.say("accept", "Yes, I confirm."), "final_end")
 check("the bank has the promise the practice case expects and no transfer", c.calls,
       [("create_promise", {"customer_id": "c_test", "product_id": "p1", "amount": 365.0, "date": "2026-10-16"})])

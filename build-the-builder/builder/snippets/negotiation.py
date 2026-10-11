@@ -320,7 +320,9 @@ def _read_back(state, plan, cfg, ids):
         if x["clamped"]:
             line += ", which is the latest date I can record for it"
         parts.append(line)
-    return "talk", "So that is " + "; and ".join(parts) + ". " + cfg["confirm_question"]
+    # the customer's own promise, not a new offer: "So that is 637.50 ... on Friday" after a floor offered for today
+    # was counted by the judge as a second floor offer (orch PUB-06)
+    return "talk", "Let me read your promise back: you will pay " + "; and ".join(parts) + ". " + cfg["confirm_question"]
 
 
 def _finish(state, plan, cfg):

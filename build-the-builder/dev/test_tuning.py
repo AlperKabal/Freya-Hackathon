@@ -96,6 +96,16 @@ c.say("accept", "Yes, I confirm.")
 promises = [b for t, b in c.calls if t == "create_promise"]
 check("the promise is still the floor on Friday", [(b.get("amount"), b.get("date")) for b in promises], [(637.5, "2026-10-16")])
 
+# the floor offered for today, the customer names Friday: the read-back is her promise, not a second offer
+# (orch PUB-06, rep 2: "So that is 637.50 ... on Friday" was counted as a second floor offer without the note)
+c = Call(SPEC_A, TOOLS, PUB06, mode="orch")
+c.say("too_much", "That is too much.")
+c.say("propose", "This Friday.", day="this Friday")
+check("the read-back after a new day is worded as her promise", c.v["say_text"],
+      "Let me read your promise back: you will pay 637.50 for your credit card ending 1903 on Friday 16 October 2026. Do you confirm?")
+check("v1: the read-back is worded as the customer's promise, never as a new offer",
+      "never as a new offer" in generate.build(SPEC_A, TOOLS, "v1")["nodes"]["negotiate_1"]["task_message"], True)
+
 # a question when the last sentence was not the open offer: the offer is said after the answer
 c = Call(SPEC_A, TOOLS, PUB06, mode="orch")
 c.say("propose", "I can pay 700.", amount="700")
