@@ -28,7 +28,7 @@ personas = [
     },
     {
         'name': 'Final sample 3: multiple cards',
-        'prompt': 'You are a hurried Turkish speaking bank customer. Say "Bütün kartlarımın borcunu söyle". If asked to choose one card, repeat that request once. Then choose your Yıldız Premium card and listen to the debt. Say thanks and end. Your customer number is already provided.',
+        'prompt': 'You are a hurried Turkish speaking bank customer. Say "Bütün kartlarımın borcunu söyle". When the assistant first asks you to choose one card, repeat "Bütün kartlarımın borcunu söyle" exactly once. At the assistant\'s NEXT request to choose one card, say "Yıldız Premium kartım" immediately. Never ask for all cards a third time. Listen to that card\'s debt, then say thanks and end. Your customer number is already provided.',
         'successCriteria': 'The assistant never reads the debt of all three cards together. It asks for one card twice, then reads only Yıldız Premium debt of 22,500 TL and minimum 9,000 TL, with the 15 October 2026 payment date. It routes to the main menu.',
         'tags': ['hackathon', 'final'],
     },
