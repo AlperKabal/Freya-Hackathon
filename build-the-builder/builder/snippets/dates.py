@@ -362,6 +362,39 @@ def parse_spoken_time(text, lo=None, hi=None):
     return "%02d:%02d" % (h, m)
 
 
+def _count(token):
+    """'an' -> 1, '45' -> 45, 'forty five' -> 45; None if it is no number."""
+    return 1 if token in ("a", "an") else int(token) if token.isdigit() else words_to_number(token)
+
+
+def relative_time(text, now):
+    """A distance from now: 'in an hour', 'in half an hour', 'in two hours', 'in an hour and a half', 'in 45 minutes'
+    -> that moment (a datetime). None when the text names no such distance."""
+    t = " " + _re.sub(r"[^a-z0-9 ]", " ", str(text or "").lower().replace("-", " ")) + " "
+    t = _re.sub(r"\s+", " ", t)
+    units = "|".join(sorted(_UNITS, key=len, reverse=True))
+    num = r"(an?|\d{1,3}|(?:" + "|".join(_TENS) + r")(?: (?:" + units + r"))?|" + units + r")"
+    lead = r"\bin (?:about |around |roughly |maybe |say )?"
+    mins = None
+    if _re.search(lead + r"half an hour\b", t):
+        mins = 30
+    if mins is None:
+        m = _re.search(lead + num + r" and a half hours?\b", t)
+        if m and _count(m.group(1)) is not None:
+            mins = _count(m.group(1)) * 60 + 30
+    if mins is None:
+        m = _re.search(lead + num + r" hours?( and a half)?\b", t)
+        if m and _count(m.group(1)) is not None:
+            mins = _count(m.group(1)) * 60 + (30 if m.group(2) else 0)
+    if mins is None:
+        m = _re.search(lead + num + r" (?:minutes?|mins?)\b", t)
+        if m and _count(m.group(1)) is not None:
+            mins = _count(m.group(1))
+    if not mins or mins > 24 * 60 or now is None:
+        return None
+    return now + _dt.timedelta(minutes=mins)
+
+
 # ---------- checking a proposed promise date ----------
 
 def check_promise_date(day, today, deadline, cfg):

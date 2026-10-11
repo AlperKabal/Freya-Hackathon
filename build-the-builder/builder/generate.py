@@ -250,6 +250,9 @@ try:
     r = resolve_spoken_date(said, today, CFG)
     day = r['date'] if r['status'] == 'exact' else str(vars.get('cb_day_found') or '')
     hhmm = parse_spoken_time(said, lo, hi) or str(vars.get('cb_time_found') or '')
+    rel = relative_time(said, now)                           # "in an hour": a day and a time, counted from now
+    if rel:
+        day, hhmm = rel.date().isoformat(), rel.strftime('%H:%M')
     vars['cb_day_found'] = day
     vars['cb_time_found'] = hhmm
     tries = int(str(vars.get('cb_attempts') or '0'))
@@ -307,7 +310,7 @@ vars['cb_when_text'] = 'none'
                 "Never say that you booked it and never say that you cannot book it. "
                 f"The ONLY tool you may call is transition_to_{not_sched}, and only when the customer cannot or will not give any time.")
         self.nodes[ask] = {"name": ask, "node_type": "conversation", "on_enter": {"type": "llm"}, "task_message": task,
-                           "extraction_schema": [extr("cb_when_text", "When the customer can be called back: the day and the time of day, copied exactly as said. "
+                           "extraction_schema": [extr("cb_when_text", "When the customer can be called back: the day and the time of day, copied exactly as said (also 'in an hour'). "
                                                       "Include a day or a time given in an earlier reply if the latest reply gives only the other. Empty if none.")],
                            "max_node_turns": 6, "max_turn_transition": not_sched,
                            "transitions": [tr(f"{ask}_check", "A day or a time was given", {"logic": "or", "conditions": [{"logic": "and", "conditions": [
@@ -465,7 +468,7 @@ vars['id_state'] = 'open'
         if cb["enabled"]:
             # one field for day and time together: a second field that fails to extract must not block the path
             ex.append(extr("cb_when_text", "When the customer can be reached: the day and the time of day, copied exactly as the person said them "
-                           "(for example 'tomorrow morning around eleven', 'Friday at 3 pm'). Include a day or a time given in an earlier reply "
+                           "(for example 'tomorrow morning around eleven', 'Friday at 3 pm', 'in an hour'). Include a day or a time given in an earlier reply "
                            "if the latest reply gives only the other. Empty if no day and no time were named."))
         if sits:
             ex.append(extr("tp_event", " ".join(f"{x['id']} if {x['trigger']}" for x in sits) + " Otherwise empty.", enum=[x["id"] for x in sits]))
@@ -699,6 +702,9 @@ try:
                 first_day = first_day + _dt.timedelta(days=1)
             else:
                 first_day = today
+            if first_day != today:                       # the prompt-driven mode reads it in the FACTS; the state machine in the plan
+                facts[-1] += (' TODAY IS NOT A DAY A PROMISE CAN HAVE for this product: if the customer can pay today, offer '
+                              + spoken(first_day) + ' (' + first_day.isoformat() + ') instead.')
             plan.append(dict(name=name, full=round(full, 2), floor=round(min(floor, full), 2), today=today.isoformat(), first_day=first_day.isoformat(), statement=intro[-1],
                              first=am['first_offer'], lo=min(am['accept_min'], am['accept_max']), hi=am['accept_max'], tm=am['too_much'], bm=am['below_min'],
                              deadline=deadline.isoformat() if deadline else '', ladder=lad, spoken=spoken_days))

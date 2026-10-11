@@ -15,6 +15,7 @@ from builder import codegen, generate, verify
 from builder.ingest import parse_openapi
 from builder.snippets import dates as D
 from walk import Call
+from expect import HOLIDAYS, WD, attempt_1, biz, next_business_day, nth_business_day_after, spoken
 
 fails = 0
 TOOLS = parse_openapi(KIT / "tools/openapi.json")["tools"]
@@ -39,39 +40,7 @@ def check_all(label, bad, total):
 
 # ---------------------------------------------------------------- the calendar, read from the brief's own text
 
-BRIEF = (KIT / "briefs/brief-a.md").read_text(encoding="utf-8")
-HOLIDAYS = set(re.findall(r"\d{4}-\d{2}-\d{2}", next(line for line in BRIEF.splitlines() if "holidays" in line and "Business days" in line)))
 check("the brief's holiday line is found and the reference SPEC has the same days", sorted(HOLIDAYS), sorted(SPEC_A["calendar"]["holidays"]))
-WD = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-MO = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-
-
-def biz(d): return d.weekday() < 5 and d.isoformat() not in HOLIDAYS
-def spoken(d): return f"{WD[d.weekday()]} {d.day} {MO[d.month - 1]} {d.year}"
-
-
-def nth_business_day_after(d, n):
-    while n:
-        d += dt.timedelta(days=1)
-        n -= biz(d)
-    return d
-
-
-def next_business_day(d):
-    return nth_business_day_after(d, 1)
-
-
-def last_business_day_of_week(d, weeks_ahead=0):
-    x = d - dt.timedelta(days=d.weekday()) + dt.timedelta(days=6 + 7 * weeks_ahead)      # that week's Sunday
-    while not biz(x):
-        x -= dt.timedelta(days=1)
-    return x
-
-
-def attempt_1(today):
-    """Rule 30: the last business day of this week; if today is that day (or it is past), of next week."""
-    x = last_business_day_of_week(today)
-    return x if x > today else last_business_day_of_week(today, 1)
 
 
 DEADLINE = {"early": lambda t: nth_business_day_after(t, 12), "late": lambda t: nth_business_day_after(t, 7)}       # rule 18
@@ -251,6 +220,18 @@ check_all("two products, one day after the loan's deadline: the loan on its own 
 check_all("one product promised, the other refused: promise, note, promise outcome", bad["mixed"], len(WORK))
 check_all("three products, one day for all that is no business day: all on the next business day", bad["holiday_all"], len(WORK))
 
+# ---------------------------------------------------------------- the prompt-driven mode is told when today cannot hold a promise
+
+prepare = generate.build(SPEC_A, TOOLS, "v1")["nodes"]["prepare_deal"]
+bad = []
+for day in DAYS:
+    v = {"now": day.isoformat() + "T11:00", "acct_items": [dict(PRODUCT["late"])]}
+    exec(verify.code_of(prepare), {"vars": v})
+    told = "TODAY IS NOT A DAY A PROMISE CAN HAVE" in v["deal_facts"]
+    if told != (not biz(day)) or (told and f"offer {spoken(next_business_day(day))} ({next_business_day(day).isoformat()}) instead" not in v["deal_facts"]):
+        bad.append((day.isoformat(), told, v["deal_facts"][-170:]))
+check_all("v1 facts: 'today cannot hold a promise, offer the next business day' on weekends and holidays, and only then", bad, len(DAYS))
+
 # ---------------------------------------------------------------- the callback window, with the clock near its end (rules 6, 7)
 
 node = WF_A["nodes"]["check_callback"]
@@ -281,6 +262,10 @@ check_all("callback today at 19:00 with the clock at 18:30: the window's last mi
 check_all("callback today at 18:00 with the clock at 18:30: not later than now, asked again", bad["past"], len(DAYS))
 check_all("callback outside 10:00-19:00: asked again", bad["outside"], len(DAYS))
 check_all("callback outside the window a second time: none is booked", bad["second"], len(DAYS))
+check("callback 'in an hour' at 11:00: today at 12:00", callback("2026-10-14T11:00", "she will be back in an hour"), ("valid", "2026-10-14", "12:00"))
+check("callback 'in half an hour' at 18:30: the window's last minute", callback("2026-10-14T18:30", "in half an hour"), ("valid", "2026-10-14", "19:00"))
+check("callback 'in an hour' at 18:30: after the window, asked again", callback("2026-10-14T18:30", "in an hour")[0], "retry")
+check("callback 'in two hours' at 23:30: tomorrow at 01:30 is outside the window", callback("2026-10-14T23:30", "in two hours")[0], "retry")
 
 print("\nall good" if not fails else f"\n{fails} failure(s)")
 sys.exit(1 if fails else 0)

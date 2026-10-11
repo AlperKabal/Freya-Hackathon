@@ -142,6 +142,18 @@ check("PUB-13 read-back says the loan is on its latest date", "latest date I can
 st, says, nxt, res = run("paid one", AB, P11, [E("refuse"), E("already_paid", about="credit card"), E("accept"), E("accept"), E("accept")])
 check("paid one: card noted paid, others continue", (res[0][0], res[0][3], res[1][0], res[2][0]), ("ended", "paid", "agreed", "agreed"))
 
+# "I paid both", "none of these is mine": every open product, not only the one being discussed
+st, says, nxt, res = run("paid both", AB, P13, [E("already_paid", about="both")])
+check("paid both: both noted paid in one turn, nothing more is asked", ([(r[0], r[3]) for r in res], nxt, "Can you" in says[-1]), ([("ended", "paid"), ("ended", "paid")], "close", False))
+st, says, nxt, res = run("paid both loans", AB, P11, [E("refuse"), E("already_paid", about="both loans")])
+check("paid both loans: the two loans are noted, the card goes on", ([(r[0], r[3]) for r in res], nxt, "credit card" in says[-1]), ([("open", ""), ("ended", "paid"), ("ended", "paid")], "talk", True))
+st, says, nxt, res = run("dispute all", AB, P11, [E("dispute", about="all of them")])
+check("none of them is mine: three notes, the call ends", ([(r[0], r[3]) for r in res], nxt), ([("ended", "dispute")] * 3, "close"))
+st, says, nxt, res = run("paid the car loan", AB, P11, [E("refuse"), E("already_paid", about="the car loan, I paid them last week")])
+check("one product named with a plural word: only that product", [(r[0], r[3]) for r in res], [("open", ""), ("open", ""), ("ended", "paid")])
+st, says, nxt, res = run("paid, after one is agreed", AB, P11, [E("refuse"), E("accept"), E("already_paid", about="both")])
+check("an agreed promise is not undone by 'I paid both': only the open ones are noted", [(r[0], r[3]) for r in res], [("agreed", ""), ("ended", "paid"), ("ended", "paid")])
+
 # Amounts in words
 for words, want in [("four hundred and fifty-five", 455.0), ("one thousand three hundred and twenty", 1320.0), ("153.50", 153.5),
                     ("1,320", 1320.0), ("one twenty five", 125.0), ("six hundred thirty seven point five", 637.5), ("637 pounds 50", 637.5), ("nothing", None)]:

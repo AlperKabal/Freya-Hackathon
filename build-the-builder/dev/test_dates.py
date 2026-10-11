@@ -132,6 +132,17 @@ for said, want in [("tomorrow morning around eleven", "11:00"), ("around eleven"
                    ("eleven", "11:00"), ("on the 15th at eleven", "11:00"), ("sometime in the afternoon", ""), ("tomorrow", ""), ("", ""), (None, "")]:
     check(f"time {said!r}", D.parse_spoken_time(said, 600, 1140), want)
 
+# 7c. A distance from now ("in an hour"): a day and a time at once
+NOW = dt.datetime(2026, 10, 14, 11, 0)
+for said, want in [("in an hour", "2026-10-14T12:00"), ("in half an hour", "2026-10-14T11:30"), ("in about two hours", "2026-10-14T13:00"), ("in 2 hours", "2026-10-14T13:00"),
+                   ("in an hour and a half", "2026-10-14T12:30"), ("in one and a half hours", "2026-10-14T12:30"), ("in 45 minutes", "2026-10-14T11:45"),
+                   ("in forty-five minutes", "2026-10-14T11:45"), ("she is back in twenty minutes", "2026-10-14T11:20"), ("in fourteen hours", "2026-10-15T01:00"),
+                   ("in the evening at seven", None), ("in two days at ten", None), ("tomorrow morning around eleven", None), ("at three", None), ("in a while", None),
+                   ("in an hour or so", "2026-10-14T12:00"), ("in 900 hours", None), ("", None), (None, None)]:
+    got = D.relative_time(said, NOW)
+    check(f"distance {said!r}", got.strftime("%Y-%m-%dT%H:%M") if got else None, want)
+check("distance without a clock", D.relative_time("in an hour", None), None)
+
 # 8. The embedded code node: no double braces, runs with a `vars` dict like the sandbox gives it
 body = "try:\n    t = parse_now(vars.get('now')).date()\n    vars['answer'] = resolve_spoken_date(vars.get('said'), t, CFG)['date']\nexcept Exception:\n    vars['answer'] = ''\n"
 src = codegen.embed(A, body)

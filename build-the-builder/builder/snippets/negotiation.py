@@ -244,6 +244,18 @@ def _to_all(about, multi):
     return multi and bool(_ALL.search(str(about or "").lower()))
 
 
+def _meant(about, plan, state, multi):
+    """The products a situation is about. One product named or none: that one, or the one being discussed.
+    Several ("both", "all of them", "both loans"): every open product, or the open ones whose name fits best."""
+    a = str(about or "").lower()
+    if not _to_all(about, multi):
+        return [_which(about, plan, state["cursor"])]
+    score = [sum(1 for w in _re.findall(r"[a-z0-9]+", pp["name"].lower()) if len(w) > 2 and w in a) for pp in plan]
+    top = max(score)
+    hit = [i for i, x in enumerate(state["p"]) if x["status"] == "open" and (top == 0 or score[i] == top)]
+    return hit or [_which(about, plan, state["cursor"])]
+
+
 def _next_product(state, plan, cfg):
     """Move to the next open product and make its first persuasion offer; or go to the read-back / close."""
     state["pending_amount"] = None                       # an amount named for one product never moves on to the next
@@ -436,8 +448,8 @@ def _step(state, ev, plan, today, cfg):
         return state, _answer_first(say, nxt) if kind in ("question", UNCONFIRMED) else say, nxt
     # ---- a situation about one product (only in briefs that note products and continue)
     if kind in sits:
-        i = _which(ev.get("about"), plan, state["cursor"])
-        _end(state["p"][i], sits[kind]["note"])
+        for i in _meant(ev.get("about"), plan, state, multi):
+            _end(state["p"][i], sits[kind]["note"])
         state["phase"] = "offer"
         nxt, say = _next_product(state, plan, cfg)
         pre = sits[kind]["say"]
