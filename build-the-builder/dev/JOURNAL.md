@@ -635,3 +635,14 @@ New: `dev/test_tuning.py` (the four fixes, on brief-a, brief-ab and imaginary-c,
 Checkpoint before these changes: tag `checkpoint-tuning-1` (= `e4dc922`, pushed).
 The two builds' extracted SPECs are in `out/yasar-tune-a.spec.json` and `out/yasar-tune-ab.spec.json` (Reader +
 audit done; not saved on Freya): `--spec` builds them in seconds once the platform answers.
+
+### Platform outage, 11 October ~09:30-10:30 UTC
+
+- The API answered 504, then 401 "invalid JWT" to a valid key, then 503 "API key validation is temporarily
+  unavailable". `run_cases.py` died twice while polling a simulation that had started (sim `875ade46`).
+- `dev/run_cases_retry.py`: the kit's `run_cases.py` unchanged, with `freya.api` patched in memory to retry a
+  transient error (same rule as `build.transient`, at most ten minutes per call). Use it for practice runs while the
+  platform is unsteady.
+- Fresh-extraction SPECs of this morning saved as orch agents with `--spec`: `yasar-tune-a` (agent `2c7148d5`),
+  `yasar-tune-ab` (agent `62a00865`, version 2: its opening said "this call is recorded" because the Reworder's
+  answer still held "recorded" and was dropped silently; fixed in `184897c` and the SPEC re-run through it).
