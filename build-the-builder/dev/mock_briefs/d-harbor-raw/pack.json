@@ -7,6 +7,20 @@
   "3-memo.md",
   "4-code-list.csv"
  ],
+ "exact": [
+  "opening.confirm_question",
+  "negotiation.first_ask",
+  "multi_product.first_ask_all",
+  "confirmation.question",
+  "recording.after_success_say",
+  "recording.failure_say",
+  "amounts.too_much.say",
+  "amounts.below_min.say",
+  "identity.on_failed.say"
+ ],
+ "tolerate": [
+  ".outcomes.table.legal_review"
+ ],
  "stresses": [
   "raw form with a memo that changes five rules",
   "identity: postcode (letters and digits) and year of birth",

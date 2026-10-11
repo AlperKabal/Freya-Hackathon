@@ -7,6 +7,12 @@
  ],
  "api": "tools/openapi.json",
  "platform": true,
+ "exact": [
+  "opening.confirm_question",
+  "negotiation.first_ask",
+  "confirmation.question",
+  "recording.after_success_say"
+ ],
  "stresses": [
   "the only pack that can be simulated on the platform: it keeps the kit's tool API and the practice customers' accounts",
   "three bands, other deadlines, three persuasion attempts",

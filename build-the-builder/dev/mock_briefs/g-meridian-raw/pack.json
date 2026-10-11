@@ -1,0 +1,38 @@
+{
+ "title": "G: Meridian Business Bank again, as raw bank material: an e-mail, a policy extract, a memo that changes six rules, two code lists",
+ "tier": 1,
+ "docs": [
+  "1-email.txt",
+  "2-credit-policy-extract.md",
+  "3-memo.txt",
+  "4-outcome-codes.csv",
+  "5-facility-types.csv"
+ ],
+ "api": "dev/mock_briefs/e-meridian-clean/tool-api.json",
+ "same_rules_as": "e-meridian-clean",
+ "cases_from": "e-meridian-clean",
+ "exact": [
+  "opening.first_sentence",
+  "opening.confirm_question",
+  "account.statement_intro",
+  "negotiation.first_ask",
+  "multi_product.first_ask_all",
+  "confirmation.question",
+  "recording.after_success_say",
+  "recording.failure_say",
+  "amounts.too_much.say",
+  "amounts.below_min.say",
+  "identity.on_failed.say",
+  "identity.decline.explanation",
+  "closing.farewell"
+ ],
+ "tolerate": [],
+ "stresses": [
+  "the rules of pack E in the other form: the SPEC must come out the same",
+  "a memo that changes a table cell, the holiday list, the callback rule, how attempts are counted, a band's attempts and the retry",
+  "holidays written in words (Christmas Day and the day after it)",
+  "product names and minimum fields in a code list of their own",
+  "a retired code in the outcome list",
+  "plain text files next to Markdown and CSV"
+ ]
+}

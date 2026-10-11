@@ -553,7 +553,7 @@ class Pack(Box):
         return "\n\n".join(ingest.read_text(p)[0] for p in self.docs)
 
     def cases(self):
-        path = self.dir / "cases.py"
+        path = (HERE / self.meta["cases_from"] if self.meta.get("cases_from") else self.dir) / "cases.py"
         if not path.exists():
             return []
         mod = importlib.util.module_from_spec(importlib.util.spec_from_file_location(f"cases_{self.name.replace('-', '_')}", path))
@@ -828,6 +828,39 @@ def score_like_the_kit(c, led):
     return case_
 
 
-def packs(only=None):
+def packs(only=None, distinct=False):
+    """The packs, by folder name or first letter. distinct: without the packs that say another pack's rules in another form."""
     names = sorted(p.name for p in HERE.iterdir() if (p / "pack.json").exists())
-    return [Pack(n) for n in names if not only or n in only or n.split("-")[0] in only]
+    out = [Pack(n) for n in names if not only or n in only or n.split("-")[0] in only]
+    return [p for p in out if not (distinct and p.meta.get("same_rules_as"))]
+
+
+MONTHS_SPOKEN = {"01-01": "New Year's Day", "12-25": "Christmas Day"}
+
+
+def anchors(P):
+    """Names, dates and sentences of the oracle SPEC that the pack's documents must carry as written: [missing]."""
+    text, spec, miss = P.text(), P.spec, []
+    everywhere = text + "\n" + P.api_path.read_text(encoding="utf-8")       # field and type names live in the tool API file
+    said = lambda sentence: sentence.strip().rstrip(".?!").lower() in text.lower()
+    names = [r["outcome"] for r in spec["outcomes"]["table"]] + [x for r in spec["outcomes"]["table"] for x in r["reasons"]]
+    names += [q["field"] for q in spec["identity"]["questions"]] + [h["value"] for h in spec["identity"]["hints"]] + [t["type"] for t in spec["account"]["product_types"]]
+    names += [v["name"] for v in spec["call_variables"]] + list(spec["notes"]["reasons"])
+    for x in spec["situations"]:
+        for eff in [x["effect"]] + ([x["offer"]["on_accept"], x["offer"]["on_decline"]] if x.get("offer") else []):
+            names += [a["queue"] for a in eff["actions"] if a["type"] == "transfer"]
+    miss += [f"the name {n!r}" for n in dict.fromkeys(names) if n not in everywhere]
+    for h in spec["calendar"]["holidays"]:
+        d = day(h)
+        forms = [h, f"{d.day} {MO[d.month - 1]} {d.year}"]
+        loose = (f"{d.day} and" in text or f"and {d.day} {MO[d.month - 1]}" in text or MONTHS_SPOKEN.get(h[5:], "~") in text) and (f"{MO[d.month - 1]} {d.year}" in text or str(d.year) in text)
+        if not any(f in text for f in forms) and not loose:
+            miss.append(f"the holiday {h}")
+    for path in P.meta.get("exact") or []:
+        node = spec
+        for part in path.split("."):
+            node = node[part]
+        if node and not said(node):
+            miss.append(f"the sentence {path}: {node!r}")
+    miss += [f"the sentence of situation {x['id']}: {x['say']!r}" for x in spec["situations"] if x["say_exact"] and x["say"] and not said(x["say"])]
+    return miss

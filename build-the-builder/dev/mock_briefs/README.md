@@ -22,10 +22,17 @@ only when a call is made on a day that is no business day. The exit code is 1 wh
 | `d-harbor-raw/` | consumer bank, raw bank material: an e-mail, a handbook extract, a memo that changes five rules, a code list (`;`-separated, quoted cells, one row the assistant never uses). Identity `postcode` + `birth_year`, outcome `unreached`, every tool field renamed, OpenAPI 3.1 with `$ref` and `allOf`, three bands, a calendar-day deadline rolled back, year-end closure days, a weekend day that is refused and not replaced, a product without a minimum, up to three accounts. 91 customers |
 | `e-meridian-clean/` | business bank, one clean specification of 56 rules. Identity `company_number` (leading zero) + `founded_year`, outcome `no_contact`, an API that answers `success` and never says how many tries are left, Saturday as a business day, a month-end deadline, a band with no persuasion attempt, half of the amount, attempts counted for the whole call, no note for a refusal, no retry, a callback the contact asks for, `local_time` with a space. 84 customers |
 | `f-freya-sibling/` | the kit's Brief A and B with twelve rules changed at once, on the kit's own tool API: the only pack that can be simulated on the platform. Each of its 23 customers borrows a practice customer and has a persona text and judge criteria |
+| `g-meridian-raw/` | pack E's rules again, as raw bank material: an e-mail (plain text), a policy extract, a memo that changes six rules (a table cell, the holiday list, the callback rule, how attempts are counted, a band's attempts, the retry), an outcome list with a retired code, and a second code list for the facility types. Holidays are written in words. Same oracle SPEC and customers as E |
+| `h-harbor-clean/` | pack D's rules again, as one clean specification of 56 rules with every value final. Same oracle SPEC and customers as D |
 | `universal.py` | customers made from a SPEC alone: pays, refuses everything, too much, a date too late, a day that is no business day, a promise that cannot be saved, one per special situation, a callback, nobody confirms, the security questions. Their right endings are read from the SPEC's own rules. About 45 per SPEC and day |
 | `variants.py` | 68 one-rule changes of a pack's SPEC (each with the sentence a brief would carry): every switch and number that D, E and F leave at one value |
 | `lib.py` | what is independent of the builder: a day-by-day calendar (`Cal`), a stand-in bank that speaks the pack's own field names and refuses what an API would refuse (`Bank`), a walker for whole calls (`Sim`), the reactive customer, and what must hold in every call (`always`) |
 | `make.py` | writes each pack's `tool-api.json`, `spec.json` (the oracle: what a careful reader takes from the documents) and pack F's documents |
+
+The final gives one clean specification and one set of raw bank material, and does not say which bank gets which
+form. So each bank is here in both forms (D and H, E and G): the Reader must bring the same SPEC back from either.
+For every pack the test checks that its documents carry each name, holiday and prescribed sentence of its oracle
+SPEC as written.
 
 The identity questions and outcome names of D and E are not guesses: the kit's `tools/run_cases.py` already knows the
 answers `postcode`, `birth_year`, `company_number` and `founded_year`, its `in_words` style says "Postcodes, years

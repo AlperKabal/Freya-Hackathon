@@ -97,6 +97,13 @@ def packs_section(names, only, verbose):
     report(not stale, "the generated pack files are what dev/mock_briefs/make.py writes")
     for P in lib.packs(names or None):
         print(f"\n== {P.title}")
+        miss = lib.anchors(P)
+        report(not miss, "the documents carry every name, holiday and prescribed sentence of the oracle SPEC as written", "; ".join(miss[:6]))
+        if P.meta.get("same_rules_as"):
+            same = json.loads((lib.HERE / P.meta["same_rules_as"] / "spec.json").read_text(encoding="utf-8"))
+            mine = dict(P.spec, meta=None)
+            report(mine == dict(same, meta=None), f"the oracle SPEC is that of {P.meta['same_rules_as']}: the same rules in another form (its customers are walked there)")
+            continue
         builds(P)
         cases, runs, bad = P.cases(), 0, 0
         for c in cases:
@@ -139,7 +146,7 @@ def by_tier(box, seen, tier):
 
 def universal_section(names):
     print("\n== customers made from the SPEC alone, on eight calendar days")
-    for box in references() + lib.packs(names or None):
+    for box in references() + lib.packs(names or None, distinct=True):
         seen, runs = collect(box, DAYS)
         if not seen:
             report(True, f"{box.name}: {runs} runs")
@@ -178,7 +185,7 @@ def odd_section(names):
     """Accounts the brief does not describe. There is no single right ending: the call must end, close with a
     pair from the brief's table, and never record what the brief forbids."""
     print("\n== accounts a brief does not describe")
-    for P in lib.packs(names or None):
+    for P in lib.packs(names or None, distinct=True):
         spec = P.spec
         pf, t = spec["account"]["product_fields"], spec["account"]["product_types"][0]
         good = universal.products_for(spec, 1)[0]
@@ -223,7 +230,7 @@ def random_section(names, runs=150):
     print("\n== unscripted customers: what must hold in every call")
     words = ["today", "tomorrow", "Friday", "next Friday", "this Saturday", "Sunday", "the 30th", "in three days", "next week", "2026-11-11", "2026-12-25", "the first of December", ""]
     amounts = ["", "", "50", "200", "one hundred and fifty", "999999", "0", "the minimum", "half"]
-    for box in references()[1:] + lib.packs(names or None):
+    for box in references()[1:] + lib.packs(names or None, distinct=True):
         spec = box.spec
         sits = [x["id"] for x in spec["situations"] if "negotiation" in x["stages"]]
         ident = universal.identity_for(spec)

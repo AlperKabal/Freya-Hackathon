@@ -94,6 +94,10 @@ DEADLINE = {"kind": "deadline"}
 FULL, FLOOR, FULL_OR_FLOOR = {"kind": "full"}, {"kind": "floor"}, {"kind": "full_or_floor_if_too_much"}
 
 
+EXACT_D = ["opening.confirm_question", "negotiation.first_ask", "multi_product.first_ask_all", "confirmation.question", "recording.after_success_say", "recording.failure_say", "amounts.too_much.say", "amounts.below_min.say", "identity.on_failed.say"]
+EXACT_E = ["opening.first_sentence", "opening.confirm_question", "account.statement_intro", "negotiation.first_ask", "multi_product.first_ask_all", "confirmation.question", "recording.after_success_say", "recording.failure_say", "amounts.too_much.say", "amounts.below_min.say", "identity.on_failed.say", "identity.decline.explanation", "closing.farewell"]
+
+
 # ---------------------------------------------------------------- pack D: Harbor Retail Bank, raw bank material
 
 def pack_d():
@@ -256,7 +260,7 @@ def pack_d():
     put("d-harbor-raw/tool-api.json", doc)
     put("d-harbor-raw/spec.json", spec)
     put("d-harbor-raw/pack.json", {"title": "D: Harbor Retail Bank (consumer). Raw bank material: an e-mail, a handbook extract, a memo that changes it, a code list",
-                                   "tier": 1, "docs": ["1-email.md", "2-policy-extract.md", "3-memo.md", "4-code-list.csv"],
+                                   "tier": 1, "docs": ["1-email.md", "2-policy-extract.md", "3-memo.md", "4-code-list.csv"], "exact": EXACT_D, "tolerate": [".outcomes.table.legal_review"],
                                    "stresses": ["raw form with a memo that changes five rules", "identity: postcode (letters and digits) and year of birth", "outcome table with unreached",
                                                 "every tool field renamed, OpenAPI 3.1 with $ref and allOf", "three bands, a calendar-day deadline rolled back, year-end closure days",
                                                 "a weekend day is refused, not replaced", "a product type without a minimum", "notes for a single account", "up to three accounts"]})
@@ -417,7 +421,7 @@ def pack_e():
         "rule_map": []}
     put("e-meridian-clean/tool-api.json", doc)
     put("e-meridian-clean/spec.json", spec)
-    put("e-meridian-clean/pack.json", {"title": "E: Meridian Business Bank (companies). A clean specification of 56 rules", "tier": 1, "docs": ["brief.md"],
+    put("e-meridian-clean/pack.json", {"title": "E: Meridian Business Bank (companies). A clean specification of 56 rules", "tier": 1, "docs": ["brief.md"], "exact": EXACT_E,
                                        "stresses": ["identity: company registration number with leading zeros and year founded", "outcome table with no_contact",
                                                     "a tool API that does not say how many tries are left, and answers `success` instead of `ok`",
                                                     "Saturday is a business day; holidays on Saturdays", "a calendar-day deadline, a month-end deadline, a band with no persuasion attempt",
@@ -497,6 +501,7 @@ def pack_f():
     put("f-freya-sibling/spec.json", spec)
     put("f-freya-sibling/pack.json", {"title": "F: the kit's Brief A and B with twelve rules changed at once, on the kit's own tool API", "tier": 1,
                                       "docs": ["1-specification.md", "2-addendum.md"], "api": "tools/openapi.json", "platform": True,
+                                      "exact": ["opening.confirm_question", "negotiation.first_ask", "confirmation.question", "recording.after_success_say"],
                                       "stresses": ["the only pack that can be simulated on the platform: it keeps the kit's tool API and the practice customers' accounts",
                                                    "three bands, other deadlines, three persuasion attempts", "holidays on the day after the practice day and the Monday after it",
                                                    "callbacks for the next business day only", "the exact day asked twice, then a flat refusal", "a human is transferred at once",
@@ -504,8 +509,25 @@ def pack_f():
     return spec
 
 
+def same_rules(name, like, title, docs, stresses, exact, tolerate=()):
+    """A pack whose documents say the rules of another pack in the other form: one oracle SPEC, one set of customers,
+    two ways of writing the brief. The Reader must bring the same SPEC back from both."""
+    spec = json.loads(OUT[f"{like}/spec.json"])
+    spec["meta"]["sources"] = docs + ["tool-api.json"]
+    put(f"{name}/spec.json", spec)
+    put(f"{name}/pack.json", {"title": title, "tier": 1, "docs": docs, "api": f"dev/mock_briefs/{like}/tool-api.json", "same_rules_as": like, "cases_from": like,
+                              "exact": exact, "tolerate": list(tolerate), "stresses": stresses})
+
+
 def main(argv=None):
     pack_d(); pack_e(); pack_f()
+    same_rules("g-meridian-raw", "e-meridian-clean", "G: Meridian Business Bank again, as raw bank material: an e-mail, a policy extract, a memo that changes six rules, two code lists",
+               ["1-email.txt", "2-credit-policy-extract.md", "3-memo.txt", "4-outcome-codes.csv", "5-facility-types.csv"],
+               ["the rules of pack E in the other form: the SPEC must come out the same", "a memo that changes a table cell, the holiday list, the callback rule, how attempts are counted, a band's attempts and the retry",
+                "holidays written in words (Christmas Day and the day after it)", "product names and minimum fields in a code list of their own", "a retired code in the outcome list",
+                "plain text files next to Markdown and CSV"], EXACT_E)
+    same_rules("h-harbor-clean", "d-harbor-raw", "H: Harbor Retail Bank again, as one clean specification of 56 rules", ["brief.md"],
+               ["the rules of pack D in the other form: the SPEC must come out the same", "no memo: every value is final where it stands"], EXACT_D, [".outcomes.table.legal_review"])
     check = "--check" in (argv if argv is not None else sys.argv[1:])
     stale = []
     for rel, text in OUT.items():
