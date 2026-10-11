@@ -372,6 +372,39 @@ check("the asked mode cannot be generated: the other mode is saved, the status n
 code, fr, log, out = run_build([A_MD, str(KIT_API), "--slot", "test-robust-dry", "--spec", str(KIT / "dev/specs/brief-a.json"), "--mode", "orch"], freya=Freya(refuse=lambda wf: "neg_eval" in wf["nodes"]))
 check("the platform's dry run refuses the asked mode: the other mode is saved", (code, len(fr.saved), has(fr.saved[0], "negotiate_1"), fr.validated), (0, 1, True, 2))
 
+class Flaky(Freya):
+    """A platform that answers 504 to the first `n` dry runs and one save, then works (seen on 11 October)."""
+    def __init__(self, n):
+        super().__init__()
+        self.n, self.save_fails = n, 1
+    def validate_workflow(self, name, wf):
+        self.validated += 1
+        if self.validated <= self.n: raise RuntimeError("POST /api/v2/workflow -> 504: error code: 504")
+    def save_workflow(self, slot, wf, state_file=None):
+        if self.save_fails:
+            self.save_fails -= 1
+            raise TimeoutError("The read operation timed out")
+        return super().save_workflow(slot, wf, state_file)
+
+
+no_wait = [(build.time, "sleep", lambda s: None)]
+code, fr, log, out = run_build([A_MD, str(KIT_API), "--slot", "test-robust-504", "--spec", str(KIT / "dev/specs/brief-a.json"), "--mode", "orch"], freya=Flaky(3), patches=no_wait)
+check("a 504 and a timeout are retried: the asked mode is saved, no step down", (code, len(fr.saved), has(fr.saved[0], "neg_eval"), "status=ok model_calls" in log, "fallback" in log, fr.validated),
+      (0, 1, True, True, False, 4))
+check("each retry is in the trace", log.count("hit a platform error"), 4)
+check("a 400 or 404 is a refusal; a 5xx, a 401 in an outage, a 429 or a timeout is not",
+      tuple(build.transient(e) for e in (RuntimeError("POST /x -> 400: bad"), RuntimeError("PUT /x -> 404: no such workflow"), RuntimeError("GET /x -> 502: x"),
+                                         RuntimeError('POST /x -> 401: {"message":"invalid JWT"}'), RuntimeError("POST /x -> 429: slow down"), TimeoutError("t"))),
+      (False, False, True, True, True, True))
+
+# the official run command: no --slot, no --mode, paths from the repository root while the kit folder is the cwd
+code, fr, log, out = run_build(["briefs/brief-a.md", "build-the-builder/tools/openapi.json", "--spec", str(KIT / "dev/specs/brief-a.json")])
+check("no --slot and no --mode: orch is saved under a slot named after the brief",
+      (code, len(fr.saved), has(fr.saved[0], "neg_eval"), (out / "brief-a.workflow.json").exists(), (out / "brief-a.export.json").exists()), (0, 1, True, True, True))
+check("the default slot comes from the brief files' names", (build.default_slot(["x/hidden-1.md"]), build.default_slot(["a/Brief A.md", "b/brief-b.md"])),
+      ("hidden-1", "brief-a+brief-b"))
+check("a path from the repository root is found from the kit folder", pathlib.Path(build.resolve_path("build-the-builder/tools/openapi.json")).exists(), True)
+
 code, fr, log, out = run_build([A_MD, str(KIT_API), "--slot", "test-robust-all", "--spec", str(KIT / "dev/specs/brief-a.json"), "--mode", "orch"], freya=Freya(refuse=lambda wf: "prepare_deal" in wf["nodes"]))
 check("the platform refuses everything generated from the SPEC: the last resort is saved", (code, len(fr.saved), has(fr.saved[0], "call"), "status=ok (last resort)" in log), (0, 1, True, True))
 

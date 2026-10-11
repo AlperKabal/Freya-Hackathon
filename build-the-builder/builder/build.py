@@ -18,7 +18,7 @@ A hidden brief gets one run, so a run must end with an agent whatever happens on
 - every model call has a time limit and the whole run a budget (BUILD_BUDGET_S, default 1500 s of the 30 minutes).
 The trace says which way was taken.
 """
-import argparse, json, os, pathlib, sys, time
+import argparse, json, os, pathlib, re, sys, time
 KIT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(KIT))
 
@@ -28,6 +28,37 @@ from builder.trace import Trace
 
 BUDGET = float(os.environ.get("BUILD_BUDGET_S", "1500"))
 MODES = ("v1", "orch")
+
+
+def transient(e):
+    """A platform error that says nothing about the workflow. Seen on 11 October: the API answered 504 for minutes,
+    then 401 "invalid JWT" to a valid key, and a builder that read those as "the dry run refused it" stepped down to
+    its weaker candidates. Only an answer about the request itself (400, 404, 409, 413, 422) is a refusal; anything else
+    (5xx, 401/403 during an outage, 408, 429, a timeout or a lost connection) is tried again."""
+    if isinstance(e, OSError):                           # URLError, socket timeout, connection reset
+        return True
+    m = re.search(r"-> (\d{3})\b", str(e))
+    return bool(m) and m.group(1) not in ("400", "404", "409", "413", "422")
+
+
+def resolve_path(f):
+    """The run command is `cd build-the-builder && python3 builder/build.py {brief_path} {tool_api_path}`: a path
+    may be given from the working directory, from the repository root or from the kit folder. The first that exists
+    wins; a path that exists nowhere is returned as given (ingest reports it)."""
+    p = pathlib.Path(f)
+    if p.is_absolute() or p.exists():
+        return str(p)
+    for base in (KIT.parent, KIT):
+        if (base / p).exists():
+            return str(base / p)
+    return str(p)
+
+
+def default_slot(briefs):
+    """The slot when none is given: the brief files' names ('hidden-1.md' -> 'hidden-1'), so the official command
+    needs no option. Several briefs are joined with '+'."""
+    names = [re.sub(r"[^a-z0-9_-]+", "-", pathlib.Path(b).stem.lower()).strip("-") for b in briefs]
+    return ("+".join(n for n in names if n) or "agent")[:60]
 
 
 def pick_inputs(files):
@@ -99,45 +130,59 @@ def last_resort(docs, tools, t):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("files", nargs="+", help="brief files and the tool API file")
-    ap.add_argument("--slot", required=True)
+    ap.add_argument("--slot", help="the agent's slot on Freya (default: from the brief file names)")
     ap.add_argument("--spec", help="use this SPEC file instead of extracting one")
     ap.add_argument("--no-save", action="store_true", help="stop after the local checks")
-    ap.add_argument("--mode", choices=list(MODES), default="v1", help="v1: one LLM negotiation node; orch: code decides every offer")
+    # orch is the shipped mode (decided 11 October): the official run command passes no --mode
+    ap.add_argument("--mode", choices=list(MODES), default="orch", help="orch (default): code decides every offer; v1: one LLM negotiation node")
     ap.add_argument("--out", default=str(KIT / "out"))
     a = ap.parse_args(argv)
-    briefs, api_path = pick_inputs(a.files)
+    briefs, api_path = pick_inputs([resolve_path(f) for f in a.files])
     if not api_path or not briefs:
         sys.exit("give one or more brief files and the tool API file")
+    a.slot = a.slot or default_slot(briefs)
     t0 = time.time()
     t = Trace(KIT / "traces", a.slot)
     status, saved = "error", None
     out = pathlib.Path(a.out)
+
+    def platform(label, what, fn):
+        """One platform call, tried again after a transient error (with a growing wait) while the budget lasts.
+        A refusal (4xx) or an exhausted budget is raised to the caller."""
+        wait = 5
+        while True:
+            try:
+                return fn()
+            except Exception as e:
+                if not transient(e) or time.time() - t0 + wait > BUDGET * 0.97:
+                    raise
+                t.event("warning", f"{label}: {what} hit a platform error ({str(e)[:120]}); trying again in {wait} s")
+                time.sleep(wait)
+                wait = min(wait * 2, 60)
 
     def publish(mode, wf, label):
         """Dry run, save (publishes), export. False when the platform refuses this candidate."""
         nonlocal saved
         import freya                                     # only needed from here on (needs FREYA_API_KEY)
         try:
-            freya.validate_workflow(a.slot + " dry run", wf)
+            platform(label, "the dry run", lambda: freya.validate_workflow(a.slot + " dry run", wf))
             t.event("selftest", f"{label}: dry run (validate_workflow): pass")
         except Exception as e:
             t.event("fallback", f"{label}: the dry run refused it ({str(e)[:300]})")
             return False
         try:
-            ids = freya.save_workflow(a.slot, wf, state_file=str(KIT / ".freya-agents.json"))
+            ids = platform(label, "the save", lambda: freya.save_workflow(a.slot, wf, state_file=str(KIT / ".freya-agents.json")))
         except Exception as e:
             t.event("fallback", f"{label}: could not be saved ({str(e)[:300]})")
             return False
         t.event("freya", f"saved and published ({label}): workflow_id={ids['workflow_id']} agent_id={ids['agent_id']} version={ids.get('version', 1)}")
         saved = dict(ids, mode=mode)
         (out / f"{a.slot}.workflow.json").write_text(json.dumps(wf, indent=1, ensure_ascii=False), encoding="utf-8")
-        for attempt in (1, 2):
-            try:
-                exp = freya.export_workflow(ids["workflow_id"], str(out / f"{a.slot}.export.json"))
-                t.event("freya", f"exported -> {pathlib.Path(exp).relative_to(KIT) if KIT in pathlib.Path(exp).resolve().parents else exp}")
-                break
-            except Exception as e:
-                t.event("warning", f"export attempt {attempt} failed ({str(e)[:200]})")
+        try:
+            exp = platform(label, "the export", lambda: freya.export_workflow(ids["workflow_id"], str(out / f"{a.slot}.export.json")))
+            t.event("freya", f"exported -> {pathlib.Path(exp).relative_to(KIT) if KIT in pathlib.Path(exp).resolve().parents else exp}")
+        except Exception as e:
+            t.event("warning", f"export failed ({str(e)[:200]}); run freya.export_workflow by hand once the platform answers")
         return True
 
     def ship(cands, what):

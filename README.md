@@ -27,18 +27,31 @@ authenticated Claude login or `ANTHROPIC_API_KEY`. The default builder model is
 
 ## Build
 
+The official run command (also the one in the submission form):
+
 ```bash
-python builder/build.py briefs/brief-a.md tools/openapi.json --slot yasar-a --mode v1
-python builder/build.py briefs/brief-a.md briefs/brief-b.md tools/openapi.json --slot yasar-ab --mode v1
+cd build-the-builder && python3 builder/build.py {brief_path} {tool_api_path}
 ```
 
-The tool API must be the final JSON input. `--mode orch` selects the experimental
-code-orchestrated negotiation. `--spec <file>` reuses a previously extracted SPEC;
-`--no-save` runs generation and local checks without publishing.
+Examples from `build-the-builder/`:
 
-Outputs are written to `out/` and `traces/`, both ignored by Git. Reuse slot names
-to update workflows in place. v1 is the verified fallback: A 10/10 and B 2/3 under
-the three-of-three rule. Orch is not yet qualified; see `dev/JOURNAL.md`.
+```bash
+python builder/build.py briefs/brief-a.md tools/openapi.json                     # slot brief-a, mode orch
+python builder/build.py briefs/brief-a.md briefs/brief-b.md tools/openapi.json   # slot brief-a+brief-b
+```
+
+The tool API file is recognised by its content. The slot defaults to the brief file
+names and the mode to `orch` (the shipped mode, decided 11 October): the organisers'
+rerun passes no options and must build the same agent. `--slot` and `--mode v1` still
+exist for development; `--spec <file>` reuses a previously extracted SPEC; `--no-save`
+runs generation and local checks without publishing. Paths may be given from the
+repository root or from `build-the-builder/`.
+
+Outputs are written to `out/` and `traces/`, both ignored by Git; the files to submit
+(exported workflows, selected traces) are copied to `submission/`, which is committed.
+Reuse slot names to update workflows in place. A transient platform error (5xx, a 401
+during an outage, a timeout) is retried within the build budget; only a refusal of the
+request (400, 404, 409, 413, 422) makes the builder try its next candidate.
 
 A build always ends with an agent. Each step has a fallback, and the trace says
 which one was used:

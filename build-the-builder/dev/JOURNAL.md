@@ -621,3 +621,17 @@ Calls read one by one (`GET /api/v2/call/<id>`); causes and fixes, all generic:
   The `reply_kind` description is long (every situation's trigger and look-alikes). Not changed this round.
 
 New: `dev/test_tuning.py` (the four fixes, on brief-a, brief-ab and imaginary-c, both modes). All suites pass.
+
+### Decisions after the tuning round (11 October, ~10:00 UTC)
+
+| Decision | Reason |
+|---|---|
+| **orch is the shipped mode and the default of `build.py`** | orch A 9/10 (its one loss fixed in `e4dc922`), orch B 3/3 in every run; v1 A 7/10, v1 B fails PUB-12 in 4 of 5 runs (the model counts attempts). The official run command passes no `--mode`, so the organisers' rerun must get orch by default |
+| `--slot` is optional: the brief file names give it (`hidden-1.md` -> `hidden-1`) | The official run command is `cd build-the-builder && python3 builder/build.py {brief_path} {tool_api_path}`, with no options |
+| Paths are found from the working directory, the repository root or the kit folder | The form's paths may be relative to the repository root while the command runs in `build-the-builder/` |
+| `submission/` (repository root) is committed; `out/` and `traces/` stay ignored | The exported workflows and the selected traces are submitted from the repository |
+| A transient platform error is retried, not taken as a refusal | Both builds of this morning (fresh extraction, orch) got 504 on every dry run, then 401 "invalid JWT" to a valid key while the platform was down; `publish` read each as "the dry run refused it" and stepped down to v1, then to the last resort, and saved nothing. Now only 400/404/409/413/422 is a refusal; anything else (5xx, 401/403, 408, 429, timeouts, lost connections) is retried with a growing wait (5 s up to 60 s) while 97% of the budget lasts. Tested with a fake platform in `test_robust.py` |
+
+Checkpoint before these changes: tag `checkpoint-tuning-1` (= `e4dc922`, pushed).
+The two builds' extracted SPECs are in `out/yasar-tune-a.spec.json` and `out/yasar-tune-ab.spec.json` (Reader +
+audit done; not saved on Freya): `--spec` builds them in seconds once the platform answers.
