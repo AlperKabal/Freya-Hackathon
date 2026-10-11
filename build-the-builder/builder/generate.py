@@ -60,6 +60,16 @@ def stem_in(stem, text):
     return bool(plain(stem)) and (" " + plain(stem)) in (" " + plain(text))
 
 
+# A sentence that code writes into a spoken variable is said as it stands: the platform fills {{name}} only in a
+# node's own text. So a call variable the SPEC wrote into such a sentence (a farewell that addresses the customer)
+# is filled in by the code node itself; any other brace stays.
+SAY_DEF = ("def _say(t):\n"
+           "    import re\n"
+           "    names = CFG.get('call_vars') or []\n"
+           "    return re.sub(r'(?<![{])[{]([a-zA-Z_][a-zA-Z0-9_]*)[}](?![}])',\n"
+           "                  lambda m: str(vars.get(m.group(1))) if m.group(1) in names and vars.get(m.group(1)) is not None else m.group(0), str(t or ''))\n")
+
+
 def extr(name, desc, enum=None, pattern=None, conf=0.7):
     e = {"name": name, "type": "string", "description": desc, "min_confidence": conf}
     if enum: e["enum_values"] = list(enum)
@@ -165,6 +175,7 @@ class Gen:
             "multi_rule": s["outcomes"].get("multi") or {},
             "note_reasons": s["notes"]["reasons"],
             "default_outcome": s["opening"]["unclear"],
+            "call_vars": self.call_vars,
             "am": {k: s["amounts"][k] for k in ("first_offer", "accept_min", "accept_max")} | {"too_much": s["amounts"]["too_much"]["offer"], "below_min": s["amounts"]["below_min"]["offer"]},
             "amount_std": self.amount_std(),
         })
@@ -514,19 +525,18 @@ try:
 except Exception:
     pass
 """
-        types = {q["field"]: q["value_type"] for q in qs}
-        pre = f"""import re
+        # the answer goes out in the form its TYPE asks for (snippets/answers.py), whatever the field is called
+        kinds = {q["field"]: [q["value_type"], (q["answer_format"] + " " + q["conversion"]).strip()] for q in qs}
+        pre = "import json\n" + codegen.snippet("answers") + f"""
 try:
     b = config.get('body')
     if isinstance(b, dict):
-        kinds = {json.dumps(types)}
+        kinds = json.loads(bytes.fromhex('{json.dumps(kinds, ensure_ascii=False).encode("utf-8").hex()}').decode('utf-8'))
         vars['id_last_field'] = str(b.get({self.tf['verify_identity']['field']!r}) or '')
         k = kinds.get(vars['id_last_field'])
         a = str(b.get({self.tf['verify_identity']['answer']!r}) or '').strip()
-        if k in ('digits', 'year', 'number'):
-            digits = re.sub(r'\\D', '', a)
-            if digits:
-                b[{self.tf['verify_identity']['answer']!r}] = digits
+        if k and a:
+            b[{self.tf['verify_identity']['answer']!r}] = normalize_answer(k[0], a, k[1])
 except Exception:
     pass
 """
@@ -708,6 +718,7 @@ try:
             vars['deal_intro'] = ' '.join([CFG['intro']] + intro + ['Let us start with your ' + plan[0]['name'] + '.', CFG['first_ask']])
         else:
             vars['deal_intro'] = ' '.join([CFG['intro']] + intro + [ask])
+        vars['deal_intro'] = _say(vars['deal_intro'])
         vars['neg_plan'] = json.dumps(plan)
         vars['nst'] = ''
         vars['say_text'] = vars['deal_intro']
@@ -721,7 +732,7 @@ except Exception:
             trans = [tr("negotiate", "the account is ready", eq("deal_state", "ready"))]
         else:
             trans = [tr(f"negotiate_{k}", f"{k} item(s) on the account", eq("n_products", str(k))) for k in range(self.maxp, 0, -1)]
-        self.nodes["prepare_deal"] = self.code("prepare_deal", body, trans + [tr(service, "no product data")])
+        self.nodes["prepare_deal"] = self.code("prepare_deal", SAY_DEF + body, trans + [tr(service, "no product data")])
 
     def negotiate(self):
         if self.mode == "orch":
@@ -1081,7 +1092,7 @@ try:
     for k in ('day_text', 'amount_text', 'about_text', 'said_text'):
         vars[k] = ''
     vars['reply_kind'] = 'unclear'          # consumed: a turn whose kind is not extracted must not repeat this one
-    vars['say_text'] = say
+    vars['say_text'] = _say(say)
     vars['say_instr'] = instr
     vars['neg_next'] = nxt
     for i, x in enumerate(st['p']):
@@ -1099,7 +1110,7 @@ except Exception as e:
     vars['neg_error'] = 'neg_eval: ' + type(e).__name__
 """
         cfg = self.cfg(**nc, call_situations=sit_cfg, turn_nodes=turn_nodes, evidence=evidence)
-        self.nodes["neg_eval"] = code_node("neg_eval", codegen.embed(cfg, body, snippets=("dates", "negotiation")),
+        self.nodes["neg_eval"] = code_node("neg_eval", codegen.embed(cfg, SAY_DEF + body, snippets=("dates", "negotiation")),
                                            sit_trans + [tr("rec_gate_1", "the customer confirmed the read-back", eq("neg_next", "record")),
                                                         tr("neg_close", "nothing was agreed", eq("neg_next", "close")),
                                                         tr("negotiate_q", "answer a question or give a first response", eq("neg_next", "ask")),
@@ -1135,7 +1146,7 @@ except Exception as e:
                 fail_to = f"{prefix}_{i}_{t + 1}" if t < tries else failn
                 self.nodes[name] = api_node(name, self.api_fn("create_promise", body, [f["amount"], f["date"]], pre=pre),
                                             [tr(okn, "recorded", truthy(var)), tr(fail_to, "not recorded")],
-                                            mapping=[{"path": "data." + ok, "variable": var}], say=(rec["retry_say"] if t > 1 else ""))
+                                            mapping=[{"path": "data." + ok, "variable": var}], say=(self.ph(rec["retry_say"]) if t > 1 else ""))
             self.nodes[okn] = code_node(okn, codegen.embed({}, f"vars['res_{i}'] = 'promise'\n", snippets=()), [tr(nxt, "always")])
             self.nodes[failn] = code_node(failn, codegen.embed({}, f"vars['res_{i}'] = 'failed'\n", snippets=()), [tr(nxt, "always")])
         return f"{prefix}_gate_1"
@@ -1333,6 +1344,16 @@ except Exception:
 
     def build(self):
         self.setup(); self.opening(); self.third_party(); self.identity(); self.account(); self.negotiate(); self.end()
+        # every way to the end node passes one code node that fills the call's variables into the farewell
+        for n in list(self.nodes.values()):
+            for t in n.get("transitions") or []:
+                if t["target_node"] == "final_end":
+                    t["target_node"] = "say_farewell"
+            for k in ("passthrough_default_transition", "max_turn_transition"):
+                if n.get(k) == "final_end":
+                    n[k] = "say_farewell"
+        body = SAY_DEF + "try:\n    vars['farewell'] = _say(vars.get('farewell'))\nexcept Exception:\n    pass\n"
+        self.nodes["say_farewell"] = code_node("say_farewell", codegen.embed({"call_vars": self.call_vars}, body, snippets=()), [tr("final_end", "always")])
         return {"initial_node": "setup", "system_prompt": self.system_prompt(), "tools": [self.close_tool()],
                 "global_nodes": {}, "nodes": self.nodes}
 

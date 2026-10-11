@@ -85,6 +85,7 @@ def audit(wf, spec):
     findings = []
     lines = fixed_lines(wf)
     early = before_identity(wf)
+    names = {v["name"] for v in spec["call_variables"]}
     # 1. words the SPEC forbids before identity is verified
     for word in spec["opening"]["forbidden_before_identity"]:
         w = str(word).strip().lower()
@@ -100,8 +101,9 @@ def audit(wf, spec):
             m = CLAIM.search(text)
             if m:
                 findings.append(f"problem: {node} ({key}) says {m.group(0)!r} although nothing may be saved at that point: {text!r}")
-        if key != "per_product":
-            for m in BRACE.finditer(text):
+        for m in BRACE.finditer(text):
+            # a code node fills the call's own variables into the sentences it writes; a line on entry is said as it is
+            if key in ("on_enter", "spoken_message") or m.group(1) not in names:
                 findings.append(f"problem: {node} ({key}) would say the placeholder {m.group(0)} aloud: {text!r}")
     # 3. the brief's exact words: said by a fixed line, or at least held by a prompt
     said = [text for _, _, text in lines]

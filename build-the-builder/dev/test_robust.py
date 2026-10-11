@@ -433,11 +433,32 @@ check("the reference SPEC's fixed sentences are clean in orch", [f for f in sent
 s = copy.deepcopy(SPEC_A)
 s["opening"]["first_sentence"] = "Hello, I am calling about your debt. This call is recorded."
 s["amounts"]["below_min"]["say"] = "That amount cannot be recorded."
-s["closing"]["farewell"] = "Thank you, {title} {last_name}. Goodbye."
+s["closing"]["farewell"] = "Thank you, {title} {last_name}. Goodbye, {nickname}."
 found = sentences.audit(generate.build(s, TOOLS, "orch"), s)
 check("a forbidden word before identity is found", any("forbidden word 'debt'" in f and "opening" in f for f in found), True)
 check("a word that reads as a save is found in the opening and in the amount sentence", sum("says 'recorded'" in f for f in found), 2)
-check("a placeholder that would be said aloud is found", any("placeholder {title}" in f for f in found), True)
+check("a placeholder nothing fills would be said aloud: found; the call's own variables are not reported",
+      (any("placeholder {nickname}" in f for f in found), any("placeholder {title}" in f for f in found)), (True, False))
+
+# the call's own variables in a sentence that code writes are filled in by the code node (the platform fills only a node's own text)
+s = copy.deepcopy(SPEC_AB)
+s["closing"]["farewell"] = "Thank you, {title} {last_name}. Goodbye."
+s["account"]["statement_intro"] = "{title} {last_name}, I am calling about a late payment."
+call_vars = {"title": "Ms", "last_name": "Lin", "first_name": "Grace", "now": "2026-10-14T11:00", "customer_id": "c1"}
+run_code = lambda node, v: (exec(verify.code_of(node), {"vars": v}), v)[1]
+for mode in ("v1", "orch"):
+    wf = generate.build(s, TOOLS, mode)
+    v = run_code(wf["nodes"]["prepare_deal"], dict(call_vars, acct_items=[{"product_id": "p1", "type": "car_loan", "past_due": 140.0, "days_late": 7, "instalment_amount": 46.0}]))
+    check(f"{mode}: the debt statement carries the customer's name", v["deal_intro"].startswith("Ms Lin, I am calling about a late payment."), True)
+    ends = {t["target_node"] for n in wf["nodes"].values() for t in n.get("transitions") or []} | {n.get("max_turn_transition") for n in wf["nodes"].values()}
+    check(f"{mode}: every way to the end node passes the farewell step", ("final_end" in ends - {None}, [k for k, n in wf["nodes"].items() if any(t["target_node"] == "final_end" for t in n.get("transitions") or [])]), (True, ["say_farewell"]))
+    for exit_node in ("set_opening_unclear", "finalize"):
+        v = run_code(wf["nodes"][exit_node], dict(call_vars, n_products="1", res_1="promise"))
+        v = run_code(wf["nodes"]["say_farewell"], v)
+        check(f"{mode}: the farewell after {exit_node} carries the customer's name and no brace", ("Thank you, Ms Lin. Goodbye." in v["farewell"], "{" in v["farewell"]), (True, False))
+v = run_code(wf["nodes"]["say_farewell"], {"farewell": "Bye {title} {unknown_thing}.", "title": "Mr"})
+check("a name that is no call variable, or has no value, stays as written", v["farewell"], "Bye Mr {unknown_thing}.")
+check("the retry sentence, said on a node's entry, uses the platform's own placeholder", "{{" not in "".join(n["on_enter"].get("text", "") for k, n in generate.build(SPEC_A, TOOLS, "orch")["nodes"].items() if k.startswith("rec_")), True)
 s = copy.deepcopy(SPEC_A)
 s["recording"]["after_success_say"] = "Your promise is recorded and saved."
 check("the sentence after a recorded promise may say so", [f for f in sentences.audit(generate.build(s, TOOLS, "orch"), s) if "recorded" in f], [])
