@@ -63,7 +63,8 @@ async def _ask(system, prompt, model):
     return "".join(out)
 
 
-async def ask_json(system, prompt, purpose, trace=None, model=None, timeout=None):
+async def ask_json(system, prompt, purpose, trace=None, model=None, timeout=None, parse=None):
+    """`parse` reads the reply (default: the JSON object in it) and raises ValueError for one that cannot be used."""
     model = model or MODEL
     limit = float(timeout or TIMEOUT)
     plan = [(model, ""), (model, " (second try)")]
@@ -79,11 +80,12 @@ async def ask_json(system, prompt, purpose, trace=None, model=None, timeout=None
                 break
             limit = min(limit, left)
         if trace: trace.model_call(m, purpose + tag)
+        again = "was not valid JSON ({}). Reply with the JSON object only." if parse is None else "could not be used ({}). Reply in the required form only."
         ask = prompt if last == "no attempt" or not last.startswith("not JSON") else \
-            prompt + f"\n\nYour previous reply was not valid JSON ({last[10:]}). Reply with the JSON object only."
+            prompt + "\n\nYour previous reply " + again.format(last[10:])
         try:
             text = await asyncio.wait_for(_ask(system, ask, m), timeout=limit)
-            data = parse_json(text)
+            data = (parse or parse_json)(text)
             if trace: trace.event("model", f"{purpose}: {len(text)} chars in {time.time() - t0:.0f} s")
             return data
         except ValueError as e:

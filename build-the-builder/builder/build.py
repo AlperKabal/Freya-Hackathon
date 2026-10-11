@@ -189,7 +189,22 @@ def case_main(a):
                         f"{len(design['services'])} service note(s), endings={[e['id'] for e in design['endings']]}, {len(design['decided'])} conflict(s) decided")
         for d in design["decided"][:30]:
             t.event("audit", f"{str(d.get('conflict', ''))[:140]} -> {str(d.get('holds', ''))[:140]}")
-        wf, shim = casework.assemble(design, tools)
+        speech = None
+        saved = pathlib.Path(str(a.design)[:-len(".design.json")] + ".speech.py") if a.design and str(a.design).endswith(".design.json") else None
+        if os.environ.get("BUILDER_PREPARED_SPEECH", "1") != "0" and tools:
+            try:                                         # sentences and decisions computed in code; without it the model composes them
+                if a.design:
+                    speech = casework.parse_code(saved.read_text(encoding="utf-8")) if saved and saved.exists() else None
+                    t.event("spec", f"prepare() from file {saved} (no model call)" if speech else "no prepare() file next to the script: the agent composes every sentence itself")
+                else:
+                    llm.set_deadline(t0 + BUDGET * 0.92)
+                    speech, report = llm.run(casework.read_speech(design, tools, docs, t))
+                    (out / f"{a.slot}.speech.py").write_text(speech, encoding="utf-8")
+                    t.event("selftest", report)
+            except Exception as e:
+                speech = None
+                t.event("warning", f"no prepared speech ({type(e).__name__}: {str(e)[:220]}): the agent composes every sentence itself")
+        wf, shim = casework.assemble(design, tools, speech=speech)
         problems = casework.problems(wf, shim, tools)
         t.event("generate", f"{len(wf['nodes'])} nodes, {len(wf['nodes']['talk']['tools'])} tools")
         t.event("selftest", f"lint and local runs of every code node and hook: {'pass' if not problems else str(len(problems)) + ' problem(s): ' + '; '.join(problems[:6])}")
