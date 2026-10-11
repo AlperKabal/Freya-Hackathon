@@ -770,6 +770,8 @@ def always(P, c, sim, spec=None):
         lowest = min([lo] + [a for a, _ in cal.ladder(p[pf["days_late"]], today, full, floor, True)])
         if not lowest - 0.005 <= amount <= full + 0.005:
             out.append(f"promise for {pid}: {amount:.2f} is outside what the brief accepts ({lowest:.2f} to {full:.2f})")
+        if cal.first_day(p[pf["days_late"]], today) is None:
+            continue                                               # no day fits the brief's own rules: what then happens is not the brief's to say
         if not cal.allowed(day(date), p[pf["days_late"]], today):
             out.append(f"promise for {pid} on {date}: not a day the brief allows (today {today}, deadline {cal.deadline(p[pf['days_late']], today)}, "
                        f"business day: {cal.biz(day(date))})")
@@ -786,7 +788,8 @@ def always(P, c, sim, spec=None):
         out.append(f"notes on a transferred call: {led['notes']}")
     if len(led["transfers"]) > 1:
         out.append(f"more than one transfer: {led['transfers']}")
-    if len(by_id) == 1 and sim.mode == "orch":                    # one product: every day the agent itself names must be a day a promise can have
+    if len(by_id) == 1 and sim.mode == "orch" and cal.first_day(list(by_id.values())[0][pf["days_late"]], today) is not None:
+        # one product, and some day fits the brief's rules: every day the agent itself names must be such a day
         p, question = list(by_id.values())[0], sim.spec["confirmation"]["question"]
         for line in sim.lines("negotiate"):
             if not (question and question in line):

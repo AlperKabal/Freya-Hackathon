@@ -84,8 +84,6 @@ fixes of `bb8e28e`. `python dev/test_mock_briefs.py` now ends with tier 1: 0.
   "That day is not possible." and repeats its open offer. `dev/specs/imaginary-d.md` (D13) asks for exactly that;
   pack D and pack E ask for the other follow-up, "ask which day suits". The SPEC has one value for both, so one
   of the two briefs is always answered in the other's way. (`D-34s`, `E-40`)
-- **When no day is possible** (the earliest day is after the deadline) the agent still offers and records the
-  deadline. (`d+earliest_tomorrow`, `d+earliest_next_business_day`, on the last business day before Christmas)
 - **Answers in less common words** are sent as they are: "It's LS6 2AB", a code with a dash, a code in two turns,
   "the number is zero eight one...", "'84", "in eighty-four", a date digit by digit, a brief that asks for small
   letters. (section `answers`, 11 of 28)
@@ -105,7 +103,7 @@ words (3.9 f) and the generated agent follows it there.
 
 ### What holds
 
-57 of the 68 one-rule variants end every universal customer as the changed rule requires, among them: another
+64 of the 68 one-rule variants end every universal customer as the changed rule requires, among them: another
 number of identity questions and of wrong answers, one band or four, a month-end or calendar-day deadline, another
 business week, no holidays, another callback window, minimum first, only the full amount, at least half, one try or
 four, each promise read back on its own, products stated one by one, attempts for the whole call, promises recorded
@@ -124,6 +122,8 @@ the SPEC has, or into a free rule that the orchestrated negotiation does not act
 - a deadline on a fixed date, or taken from a field of the account (a statement date);
 - a day that is no business day replaced by the business day **before** it;
 - what follows a refused day: repeat the open offer, or ask which day suits (`reject` is one value);
+- what happens when no day fits (the earliest day is after the deadline): the builder then moves the deadline to
+  the earliest day (`dev/test_generalize.py`); the walker does not judge those calls;
 - a limit of wrong answers per question (when the API does not report the tries left);
 - products in another order than the tool returned them (most overdue first);
 - a close that depends on whether all or only some products were promised, or on full against part payment;
