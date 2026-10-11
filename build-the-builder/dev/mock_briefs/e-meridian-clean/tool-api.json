@@ -1,0 +1,479 @@
+{
+ "openapi": "3.0.3",
+ "info": {
+  "title": "Meridian Business Bank - assistant tools (mock, not an organiser file)",
+  "version": "mock"
+ },
+ "servers": [
+  {
+   "url": "https://example.invalid/meridian/api/v2"
+  }
+ ],
+ "components": {},
+ "paths": {
+  "/assistant/verify_identity": {
+   "post": {
+    "summary": "Check one verification answer.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "account_ref": {
+          "type": "string"
+         },
+         "check": {
+          "type": "string",
+          "enum": [
+           "company_number",
+           "founded_year"
+          ]
+         },
+         "value": {
+          "type": "string",
+          "description": "For company_number: the eight digits, leading zeros included. For founded_year: four digits."
+         }
+        },
+        "required": [
+         "account_ref",
+         "check",
+         "value"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`success` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean"
+          },
+          "error": {
+           "type": "string"
+          },
+          "correct": {
+           "type": "boolean"
+          },
+          "complete": {
+           "type": "boolean"
+          }
+         }
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    }
+   }
+  },
+  "/assistant/get_account": {
+   "post": {
+    "summary": "The overdue facilities. Refused until both questions are passed.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "account_ref": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "account_ref"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`success` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean"
+          },
+          "error": {
+           "type": "string"
+          },
+          "facilities": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "facility_id": {
+              "type": "string"
+             },
+             "facility_type": {
+              "type": "string",
+              "enum": [
+               "business_loan",
+               "overdraft",
+               "equipment_lease",
+               "company_card"
+              ]
+             },
+             "overdue_amount": {
+              "type": "number"
+             },
+             "days_overdue": {
+              "type": "integer"
+             },
+             "minimum_due": {
+              "type": "number"
+             },
+             "lease_rental": {
+              "type": "number"
+             },
+             "agreement_no": {
+              "type": "string"
+             },
+             "card_suffix": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    }
+   }
+  },
+  "/assistant/create_promise": {
+   "post": {
+    "summary": "Record a payment promise. One per facility.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "account_ref": {
+          "type": "string"
+         },
+         "facility_id": {
+          "type": "string"
+         },
+         "amount": {
+          "type": "number"
+         },
+         "payment_date": {
+          "type": "string",
+          "format": "date"
+         }
+        },
+        "required": [
+         "account_ref",
+         "facility_id",
+         "amount",
+         "payment_date"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`success` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean"
+          },
+          "error": {
+           "type": "string"
+          },
+          "promise_ref": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    }
+   }
+  },
+  "/assistant/add_note": {
+   "post": {
+    "summary": "Record why a facility ended without a promise.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "account_ref": {
+          "type": "string"
+         },
+         "facility_id": {
+          "type": "string"
+         },
+         "reason": {
+          "type": "string",
+          "enum": [
+           "settled",
+           "contested",
+           "difficulty",
+           "system_error"
+          ]
+         },
+         "text": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "account_ref",
+         "facility_id",
+         "reason"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`success` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean"
+          },
+          "error": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    }
+   }
+  },
+  "/assistant/schedule_callback": {
+   "post": {
+    "summary": "Book a callback.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "account_ref": {
+          "type": "string"
+         },
+         "callback_date": {
+          "type": "string",
+          "format": "date"
+         },
+         "callback_time": {
+          "type": "string",
+          "description": "HH:MM"
+         }
+        },
+        "required": [
+         "account_ref",
+         "callback_date",
+         "callback_time"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`success` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean"
+          },
+          "error": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    }
+   }
+  },
+  "/assistant/transfer_to_agent": {
+   "post": {
+    "summary": "Hand the call to a desk.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "account_ref": {
+          "type": "string"
+         },
+         "desk": {
+          "type": "string",
+          "enum": [
+           "specialist",
+           "relationship_manager",
+           "support_desk"
+          ]
+         }
+        },
+        "required": [
+         "account_ref",
+         "desk"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`success` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean"
+          },
+          "error": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    }
+   }
+  },
+  "/assistant/close_call": {
+   "post": {
+    "summary": "End the call. Always the last tool call. Nothing is accepted after it.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "account_ref": {
+          "type": "string"
+         },
+         "outcome": {
+          "type": "string",
+          "enum": [
+           "agreed",
+           "settled",
+           "escalated",
+           "no_agreement",
+           "unverified",
+           "no_contact"
+          ]
+         },
+         "reason": {
+          "type": "string",
+          "enum": [
+           "insolvency",
+           "manager_request",
+           "support",
+           "declined",
+           "difficulty",
+           "contested",
+           "system_error",
+           "callback_requested",
+           "wrong_answers",
+           "declined_checks",
+           "unconfirmed",
+           "callback_booked",
+           "callback_refused",
+           "contact_left",
+           "ceased_trading"
+          ],
+          "description": "Required for every outcome except agreed and settled."
+         }
+        },
+        "required": [
+         "account_ref",
+         "outcome"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`success` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean"
+          },
+          "error": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    }
+   }
+  }
+ }
+}

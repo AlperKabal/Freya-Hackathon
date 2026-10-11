@@ -1,0 +1,861 @@
+{
+ "spec_version": 1,
+ "meta": {
+  "bank_name": "Meridian Business Bank",
+  "language": "English",
+  "sources": [
+   "1-email.txt",
+   "2-credit-policy-extract.md",
+   "3-memo.txt",
+   "4-outcome-codes.csv",
+   "5-facility-types.csv",
+   "tool-api.json"
+  ]
+ },
+ "call_variables": [
+  {
+   "name": "account_ref",
+   "role": "customer_id",
+   "meaning": "Pass it to every tool call."
+  },
+  {
+   "name": "company_name",
+   "role": "address",
+   "meaning": "The company that owes the money."
+  },
+  {
+   "name": "contact_first_name",
+   "role": "address",
+   "meaning": "The person to ask for."
+  },
+  {
+   "name": "contact_last_name",
+   "role": "address",
+   "meaning": "Address the contact by first and last name."
+  },
+  {
+   "name": "local_time",
+   "role": "now",
+   "meaning": "The current date and time. All date rules use this, never the real clock."
+  }
+ ],
+ "addressing": "{contact_first_name} {contact_last_name}",
+ "tool_fields": {
+  "customer_id": "account_ref",
+  "verify_identity": {
+   "field": "check",
+   "answer": "value"
+  },
+  "create_promise": {
+   "product_id": "facility_id",
+   "amount": "amount",
+   "date": "payment_date"
+  },
+  "add_note": {
+   "product_id": "facility_id",
+   "reason": "reason",
+   "text": "text"
+  },
+  "schedule_callback": {
+   "date": "callback_date",
+   "time": "callback_time"
+  },
+  "transfer_to_agent": {
+   "queue": "desk"
+  },
+  "close_call": {
+   "outcome": "outcome",
+   "reason": "reason"
+  }
+ },
+ "agent": {
+  "self_description": "the virtual assistant of Meridian Business Bank",
+  "style_rules": []
+ },
+ "opening": {
+  "first_sentence": "Hello, this is the virtual assistant of Meridian Business Bank. Calls are recorded.",
+  "confirm_question": "May I speak with {contact_first_name} {contact_last_name} of {company_name}?",
+  "forbidden_before_identity": [
+   "overdue",
+   "arrears",
+   "debt",
+   "payment",
+   "facility",
+   "loan",
+   "lease",
+   "overdraft",
+   "card"
+  ],
+  "confirmations": [
+   "yes",
+   "speaking",
+   "the contact's own name"
+  ],
+  "non_confirmations": [],
+  "max_asks": 2,
+  "answer_question_first": false,
+  "unclear": {
+   "outcome": "no_contact",
+   "reason": "unconfirmed"
+  }
+ },
+ "third_party": {
+  "enabled": true,
+  "instructions": [
+   "Do not say why you are calling.",
+   "Ask when the contact can be reached.",
+   "Nobody but the contact may answer the verification questions, and nobody else is told anything about the facilities."
+  ],
+  "callback": {
+   "enabled": true,
+   "include_today": true,
+   "business_days_ahead": 3,
+   "window_start": "08:00",
+   "window_end": "18:00",
+   "inclusive": false,
+   "after_now": true,
+   "max_asks": 2,
+   "scheduled": {
+    "outcome": "no_contact",
+    "reason": "callback_booked"
+   },
+   "not_scheduled": {
+    "outcome": "no_contact",
+    "reason": "callback_refused"
+   }
+  }
+ },
+ "identity": {
+  "questions": [
+   {
+    "field": "company_number",
+    "ask": "Could you tell me the company registration number?",
+    "value_type": "digits",
+    "answer_format": "eight digits",
+    "conversion": "Send the eight digits, with any leading zeros and nothing else."
+   },
+   {
+    "field": "founded_year",
+    "ask": "In which year was the company founded?",
+    "value_type": "year",
+    "answer_format": "four digits (YYYY)",
+    "conversion": "Send the year as four digits."
+   }
+  ],
+  "one_at_a_time": true,
+  "max_wrong_total": 3,
+  "wrong_may_retry": true,
+  "hints": [],
+  "on_failed": {
+   "say": "I cannot verify the company, so I have to end this call.",
+   "outcome": "unverified",
+   "reason": "wrong_answers"
+  },
+  "decline": {
+   "explanation": "These checks protect the company's accounts.",
+   "max_declines": 2,
+   "purpose_question_counts": false,
+   "outcome": "unverified",
+   "reason": "declined_checks"
+  },
+  "result_fields": {
+   "ok": "success",
+   "verified": "correct",
+   "all_verified": "complete",
+   "wrong_left": "",
+   "hint": ""
+  }
+ },
+ "account": {
+  "products_field": "facilities",
+  "product_fields": {
+   "id": "facility_id",
+   "type": "facility_type",
+   "past_due": "overdue_amount",
+   "days_late": "days_overdue"
+  },
+  "product_types": [
+   {
+    "type": "business_loan",
+    "spoken_name": "business loan",
+    "floor_field": "minimum_due"
+   },
+   {
+    "type": "overdraft",
+    "spoken_name": "overdraft facility",
+    "floor_field": "minimum_due"
+   },
+   {
+    "type": "equipment_lease",
+    "spoken_name": "equipment lease {agreement_no}",
+    "floor_field": "lease_rental"
+   },
+   {
+    "type": "company_card",
+    "spoken_name": "company card ending {card_suffix}",
+    "floor_field": "minimum_due"
+   }
+  ],
+  "max_products": 3,
+  "statement_intro": "I am calling about overdue amounts on your company's facilities.",
+  "statement_per_product": "Your {spoken_name} is {days_late} days overdue, with {past_due} outstanding."
+ },
+ "calendar": {
+  "business_weekdays": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "holidays": [
+   "2026-10-29",
+   "2026-11-14",
+   "2026-12-25",
+   "2026-12-26",
+   "2027-01-01",
+   "2027-01-02"
+  ]
+ },
+ "bands": [
+  {
+   "name": "standard",
+   "days_late_min": 1,
+   "days_late_max": 14,
+   "deadline": {
+    "kind": "nth_calendar_day_after_today",
+    "n": 10,
+    "roll": "next_business_day"
+   },
+   "attempts": 2,
+   "ladder": [
+    {
+     "attempt": 1,
+     "date": {
+      "kind": "last_business_day_of_week",
+      "week_offset": 0,
+      "if_today_week_offset": 1
+     },
+     "amount": {
+      "kind": "full_or_floor_if_too_much"
+     }
+    },
+    {
+     "attempt": 2,
+     "date": {
+      "kind": "deadline"
+     },
+     "amount": {
+      "kind": "percent_of_full",
+      "percent": 50
+     }
+    }
+   ]
+  },
+  {
+   "name": "priority",
+   "days_late_min": 15,
+   "days_late_max": 60,
+   "deadline": {
+    "kind": "last_business_day_of_month",
+    "month_offset": 0
+   },
+   "attempts": 2,
+   "ladder": [
+    {
+     "attempt": 1,
+     "date": {
+      "kind": "last_business_day_of_week",
+      "week_offset": 0,
+      "if_today_week_offset": 1
+     },
+     "amount": {
+      "kind": "full_or_floor_if_too_much"
+     }
+    },
+    {
+     "attempt": 2,
+     "date": {
+      "kind": "deadline"
+     },
+     "amount": {
+      "kind": "percent_of_full",
+      "percent": 50
+     }
+    }
+   ]
+  },
+  {
+   "name": "escalated",
+   "days_late_min": 61,
+   "days_late_max": 9999,
+   "deadline": {
+    "kind": "nth_business_day_after_today",
+    "n": 2
+   },
+   "attempts": 0,
+   "ladder": []
+  }
+ ],
+ "dates": {
+  "earliest": {
+   "kind": "today"
+  },
+  "business_day_only": false,
+  "non_business_day": "offer_next_business_day",
+  "after_deadline": "reject",
+  "refused_deadline_is_flat_refusal": false,
+  "vague": {
+   "examples": [
+    "next week",
+    "at the end of the quarter",
+    "when our client pays us"
+   ],
+   "ask_exact_times": 1,
+   "then": "flat_refusal"
+  },
+  "relative_weekday": {
+   "next": "following_week",
+   "this": "current_week"
+  }
+ },
+ "amounts": {
+  "first_offer": {
+   "kind": "full"
+  },
+  "never_ask_open_amount": true,
+  "accept_min": {
+   "kind": "floor"
+  },
+  "accept_max": {
+   "kind": "full"
+  },
+  "too_much": {
+   "offer": {
+    "kind": "floor"
+   },
+   "times": 1,
+   "say": "The balance that remains is still overdue.",
+   "refused_is_flat_refusal": true
+  },
+  "below_min": {
+   "say": "That is below the minimum we can accept.",
+   "offer": {
+    "kind": "floor"
+   },
+   "times": 1,
+   "refused_is_flat_refusal": true
+  }
+ },
+ "negotiation": {
+  "first_ask": "Can the company settle this today?",
+  "proposal_never_refusal": true,
+  "flat_refusal_definition": "A flat refusal or a non-answer.",
+  "attempts_exhausted": {
+   "outcome": "no_agreement",
+   "reason": "declined"
+  },
+  "forbidden_offers": [
+   "a discount",
+   "a waiver",
+   "a payment holiday",
+   "a new repayment schedule"
+  ],
+  "forbidden_questions": [
+   "How much can the company pay?"
+  ],
+  "call_attempt_limit": 3
+ },
+ "confirmation": {
+  "read_back": [
+   "product",
+   "amount",
+   "date"
+  ],
+  "question": "Is that correct?",
+  "require_clear_yes": true,
+  "on_change": "revalidate_and_read_back",
+  "one_promise_per_product": true,
+  "after_record_change_say": "A recorded promise cannot be changed in this call. Your relationship manager can change it."
+ },
+ "recording": {
+  "max_attempts": 1,
+  "success_field": "success",
+  "after_success_say": "You will receive an e-mail confirming this arrangement.",
+  "retry_say": "",
+  "failure_say": "I am sorry, the system could not take this arrangement.",
+  "on_final_failure": {
+   "outcome": "no_agreement",
+   "reason": "system_error",
+   "note_reason": "system_error"
+  }
+ },
+ "situations": [
+  {
+   "id": "contact_left",
+   "trigger": "The person says the contact no longer works for the company.",
+   "not_this": "",
+   "stages": [
+    "opening",
+    "third_party"
+   ],
+   "say": "",
+   "say_exact": false,
+   "first_response": "",
+   "threshold": 1,
+   "suppresses_persuasion": true,
+   "priority": 90,
+   "proposal_still_handled": false,
+   "scope": "call",
+   "effect": {
+    "actions": [],
+    "outcome": "no_contact",
+    "reason": "contact_left"
+   },
+   "source": "9",
+   "guidance": ""
+  },
+  {
+   "id": "ceased_trading",
+   "trigger": "The person says the company has stopped trading.",
+   "not_this": "",
+   "stages": [
+    "opening",
+    "third_party"
+   ],
+   "say": "",
+   "say_exact": false,
+   "first_response": "",
+   "threshold": 1,
+   "suppresses_persuasion": true,
+   "priority": 95,
+   "proposal_still_handled": false,
+   "scope": "call",
+   "effect": {
+    "actions": [],
+    "outcome": "no_contact",
+    "reason": "ceased_trading"
+   },
+   "source": "10",
+   "guidance": ""
+  },
+  {
+   "id": "insolvency",
+   "trigger": "The contact says the company is insolvent, in administration or in liquidation.",
+   "not_this": "Saying the company cannot pay now, with no insolvency, is a refusal.",
+   "stages": [
+    "negotiation",
+    "confirmation"
+   ],
+   "say": "",
+   "say_exact": false,
+   "first_response": "",
+   "threshold": 1,
+   "suppresses_persuasion": true,
+   "priority": 85,
+   "proposal_still_handled": false,
+   "scope": "call",
+   "effect": {
+    "actions": [
+     {
+      "type": "transfer",
+      "queue": "specialist"
+     }
+    ],
+    "outcome": "escalated",
+    "reason": "insolvency"
+   },
+   "source": "39",
+   "guidance": "Do not negotiate and take no promise.",
+   "evidence_words": [
+    "insolven",
+    "administrat",
+    "liquidat",
+    "bankrupt"
+   ]
+  },
+  {
+   "id": "difficulty",
+   "trigger": "The contact says the company is in temporary difficulty: a fire, a flood, the loss of a major client.",
+   "not_this": "Saying the amount is too much, with no such event, is not this.",
+   "stages": [
+    "negotiation",
+    "confirmation"
+   ],
+   "say": "",
+   "say_exact": false,
+   "first_response": "",
+   "threshold": 1,
+   "suppresses_persuasion": true,
+   "priority": 80,
+   "proposal_still_handled": true,
+   "scope": "call",
+   "effect": {
+    "actions": [
+     {
+      "type": "note",
+      "note_reason": "difficulty"
+     }
+    ],
+    "outcome": "no_agreement",
+    "reason": "difficulty"
+   },
+   "source": "43",
+   "guidance": "Say one short sentence of understanding. Make no persuasion attempt.",
+   "offer": {
+    "question": "Offer to put the contact through to the business support desk.",
+    "on_accept": {
+     "actions": [
+      {
+       "type": "transfer",
+       "queue": "support_desk"
+      }
+     ],
+     "outcome": "escalated",
+     "reason": "support"
+    },
+    "on_decline": {
+     "actions": [
+      {
+       "type": "note",
+       "note_reason": "difficulty"
+      }
+     ],
+     "outcome": "no_agreement",
+     "reason": "difficulty"
+    }
+   }
+  },
+  {
+   "id": "manager",
+   "trigger": "The contact asks for the relationship manager or for a person.",
+   "not_this": "Asking whether the assistant is a machine is a question, not this.",
+   "stages": [
+    "opening",
+    "identity",
+    "negotiation",
+    "confirmation"
+   ],
+   "say": "",
+   "say_exact": false,
+   "first_response": "Ask once whether you can help first.",
+   "threshold": 2,
+   "suppresses_persuasion": true,
+   "priority": 60,
+   "proposal_still_handled": false,
+   "scope": "call",
+   "effect": {
+    "actions": [
+     {
+      "type": "transfer",
+      "queue": "relationship_manager"
+     }
+    ],
+    "outcome": "escalated",
+    "reason": "manager_request"
+   },
+   "source": "40",
+   "guidance": "",
+   "evidence_words": [
+    "manager",
+    "person",
+    "human",
+    "someone",
+    "somebody"
+   ]
+  },
+  {
+   "id": "call_back_later",
+   "trigger": "The contact says it is a bad moment and asks to be called back.",
+   "not_this": "Proposing a later payment date is a proposal, not a request to be called back.",
+   "stages": [
+    "identity",
+    "negotiation",
+    "confirmation"
+   ],
+   "say": "",
+   "say_exact": false,
+   "first_response": "",
+   "threshold": 1,
+   "suppresses_persuasion": true,
+   "priority": 55,
+   "proposal_still_handled": false,
+   "scope": "call",
+   "effect": {
+    "actions": [
+     {
+      "type": "callback"
+     }
+    ],
+    "outcome": "no_agreement",
+    "reason": "callback_requested"
+   },
+   "source": "44",
+   "guidance": "",
+   "evidence_words": [
+    "call back",
+    "call me back",
+    "call again",
+    "call later",
+    "ring back",
+    "ring me back",
+    "bad moment",
+    "bad time",
+    "in a meeting"
+   ]
+  },
+  {
+   "id": "not_talking",
+   "trigger": "The contact says they do not want to talk.",
+   "not_this": "Refusing to pay is a refusal, not this.",
+   "stages": [
+    "identity",
+    "negotiation",
+    "confirmation"
+   ],
+   "say": "",
+   "say_exact": false,
+   "first_response": "Acknowledge it in one sentence and continue.",
+   "threshold": 2,
+   "suppresses_persuasion": true,
+   "priority": 40,
+   "proposal_still_handled": false,
+   "scope": "call",
+   "effect": {
+    "actions": [],
+    "outcome": "no_agreement",
+    "reason": "declined",
+    "outcome_by_stage": {
+     "before_identity": {
+      "outcome": "unverified",
+      "reason": "declined_checks"
+     },
+     "after_identity": {
+      "outcome": "no_agreement",
+      "reason": "declined"
+     }
+    }
+   },
+   "source": "47",
+   "guidance": ""
+  },
+  {
+   "id": "already_paid",
+   "trigger": "The contact says the company has already paid this overdue amount.",
+   "not_this": "",
+   "stages": [
+    "negotiation",
+    "confirmation"
+   ],
+   "say": "Payments can take up to three business days to appear.",
+   "say_exact": true,
+   "first_response": "",
+   "threshold": 1,
+   "suppresses_persuasion": true,
+   "priority": 50,
+   "proposal_still_handled": false,
+   "scope": "product",
+   "effect": {
+    "actions": [
+     {
+      "type": "note",
+      "note_reason": "settled"
+     }
+    ],
+    "outcome": "settled",
+    "reason": ""
+   },
+   "source": "41",
+   "guidance": ""
+  },
+  {
+   "id": "contested",
+   "trigger": "The contact says the company does not owe this, or never had this facility.",
+   "not_this": "",
+   "stages": [
+    "negotiation",
+    "confirmation"
+   ],
+   "say": "",
+   "say_exact": false,
+   "first_response": "",
+   "threshold": 1,
+   "suppresses_persuasion": true,
+   "priority": 50,
+   "proposal_still_handled": false,
+   "scope": "product",
+   "effect": {
+    "actions": [
+     {
+      "type": "note",
+      "note_reason": "contested"
+     }
+    ],
+    "outcome": "no_agreement",
+    "reason": "contested"
+   },
+   "source": "42",
+   "guidance": "Do not argue and take no promise for that facility."
+  }
+ ],
+ "faq": [
+  {
+   "trigger": "The contact asks whether they are talking to a machine.",
+   "answer": "Say that you are the virtual assistant of Meridian Business Bank, then continue.",
+   "source": "5"
+  },
+  {
+   "trigger": "The contact asks whether this call is a scam.",
+   "answer": "Say that they can check the call by ringing their relationship manager on the usual number, then continue.",
+   "source": "45"
+  },
+  {
+   "trigger": "The contact asks something the tools cannot answer.",
+   "answer": "Say that you do not have that information. Do not invent figures, dates or reasons.",
+   "source": "46"
+  }
+ ],
+ "multi_product": {
+  "enabled": true,
+  "state_all_first": true,
+  "ask_all_today_once": true,
+  "first_ask_all": "Can the company settle all of them today?",
+  "order": "as_returned",
+  "attempts_per_product": false,
+  "one_date_clamped_per_product": false,
+  "single_read_back": true,
+  "unrecorded_on_transfer": "drop"
+ },
+ "notes": {
+  "enabled": true,
+  "for_each_product_without_promise": false,
+  "reasons": [
+   "settled",
+   "contested",
+   "difficulty",
+   "system_error"
+  ],
+  "on_transfer": "none"
+ },
+ "outcomes": {
+  "table": [
+   {
+    "outcome": "agreed",
+    "reasons": [],
+    "when": "at least one promise was recorded"
+   },
+   {
+    "outcome": "settled",
+    "reasons": [],
+    "when": "no promise, and every facility was already paid"
+   },
+   {
+    "outcome": "escalated",
+    "reasons": [
+     "insolvency",
+     "manager_request",
+     "support"
+    ],
+    "when": "rules 39, 40, 43"
+   },
+   {
+    "outcome": "no_agreement",
+    "reasons": [
+     "declined",
+     "difficulty",
+     "contested",
+     "system_error",
+     "callback_requested"
+    ],
+    "when": "rules 32 and 47, 43, 42, 37, 44"
+   },
+   {
+    "outcome": "unverified",
+    "reasons": [
+     "wrong_answers",
+     "declined_checks"
+    ],
+    "when": "rules 14, 15 and 47"
+   },
+   {
+    "outcome": "no_contact",
+    "reasons": [
+     "unconfirmed",
+     "callback_booked",
+     "callback_refused",
+     "contact_left",
+     "ceased_trading"
+    ],
+    "when": "rules 3, 7, 8, 9, 10"
+   }
+  ],
+  "reason_omitted_for": [
+   "agreed",
+   "settled"
+  ],
+  "promise": {
+   "outcome": "agreed",
+   "reason": ""
+  },
+  "transfer_after_promise": "transfer_wins",
+  "multi": {
+   "all_notes_match": {
+    "note_reason": "settled",
+    "outcome": "settled",
+    "reason": ""
+   },
+   "otherwise": {
+    "outcome": "no_agreement",
+    "reason_from": "first_note_not_matching"
+   }
+  }
+ },
+ "closing": {
+  "farewell": "Thank you for your time. Goodbye."
+ },
+ "free_rules": [
+  {
+   "id": "29c",
+   "text": "No attempt names a date after the deadline: if its date would be later, it names the deadline.",
+   "applies_to": [
+    "negotiation"
+   ],
+   "source": "29"
+  },
+  {
+   "id": "30",
+   "text": "Persuasion attempts are counted for the whole call, at most three, and a facility never gets more than its band allows.",
+   "applies_to": [
+    "negotiation"
+   ],
+   "source": "30"
+  },
+  {
+   "id": "31",
+   "text": "A facility in the escalated band gets no persuasion attempt: a refusal ends it at once.",
+   "applies_to": [
+    "negotiation"
+   ],
+   "source": "31"
+  },
+  {
+   "id": "50",
+   "text": "A facility that was simply refused gets no note.",
+   "applies_to": [
+    "negotiation",
+    "confirmation"
+   ],
+   "source": "50"
+  },
+  {
+   "id": "4",
+   "text": "A question asked before the contact is confirmed is not answered: say you can explain once you know who you are speaking with.",
+   "applies_to": [
+    "opening"
+   ],
+   "source": "4"
+  }
+ ],
+ "rule_map": []
+}

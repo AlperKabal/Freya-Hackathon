@@ -1,0 +1,28 @@
+{
+ "title": "H: Harbor Retail Bank again, as one clean specification of 56 rules",
+ "tier": 1,
+ "docs": [
+  "brief.md"
+ ],
+ "api": "dev/mock_briefs/d-harbor-raw/tool-api.json",
+ "same_rules_as": "d-harbor-raw",
+ "cases_from": "d-harbor-raw",
+ "exact": [
+  "opening.confirm_question",
+  "negotiation.first_ask",
+  "multi_product.first_ask_all",
+  "confirmation.question",
+  "recording.after_success_say",
+  "recording.failure_say",
+  "amounts.too_much.say",
+  "amounts.below_min.say",
+  "identity.on_failed.say"
+ ],
+ "tolerate": [
+  ".outcomes.table.legal_review"
+ ],
+ "stresses": [
+  "the rules of pack D in the other form: the SPEC must come out the same",
+  "no memo: every value is final where it stands"
+ ]
+}

@@ -1,0 +1,21 @@
+MERIDIAN BUSINESS BANK
+RISK POLICY OFFICE - MEMO 26-118
+
+Date:     2 October 2026
+To:       Business Collections
+Subject:  Credit Policy chapter 7 (edition of 1 July 2026): six changes for calls made by the virtual assistant
+In force: at once
+
+1. 7.5, table, standard band. The deadline is the 10th calendar day after today (was the 14th). The rule for a day that is not a business day stays: the next business day.
+
+2. 7.5, holidays. Two holidays are added: 14 November 2026 and 2 January 2027. Both are Saturdays.
+
+3. 7.2, callbacks. A callback is for today or for one of the next three business days (was: today or the next business day). The time must be after 08:00 and before 18:00. 08:00 and 18:00 themselves cannot be booked (was: 09:00 to 17:00, both included). It must still be later than the time of the call.
+
+4. 7.7, persuasion attempts. They are no longer counted per facility. They are counted for the whole call: at most three in one call, whatever the number of facilities. A facility never gets more attempts than its band allows. When no attempt is left, a refused facility ends without a promise.
+
+5. 7.5, table, escalated band. A facility in the escalated band gets no persuasion attempt (was 1). If the contact refuses to settle it, it ends without a promise at once.
+
+6. 7.8, recording. If create_promise fails, the assistant does not try again (was: once more). It says the sentence of 7.8 straight away.
+
+Everything else in chapter 7 stays as it is.
