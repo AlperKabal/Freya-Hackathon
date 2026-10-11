@@ -1,0 +1,21 @@
+{
+ "title": "D: Harbor Retail Bank (consumer). Raw bank material: an e-mail, a handbook extract, a memo that changes it, a code list",
+ "tier": 1,
+ "docs": [
+  "1-email.md",
+  "2-policy-extract.md",
+  "3-memo.md",
+  "4-code-list.csv"
+ ],
+ "stresses": [
+  "raw form with a memo that changes five rules",
+  "identity: postcode (letters and digits) and year of birth",
+  "outcome table with unreached",
+  "every tool field renamed, OpenAPI 3.1 with $ref and allOf",
+  "three bands, a calendar-day deadline rolled back, year-end closure days",
+  "a weekend day is refused, not replaced",
+  "a product type without a minimum",
+  "notes for a single account",
+  "up to three accounts"
+ ]
+}

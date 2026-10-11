@@ -1,0 +1,21 @@
+{
+ "title": "F: the kit's Brief A and B with twelve rules changed at once, on the kit's own tool API",
+ "tier": 1,
+ "docs": [
+  "1-specification.md",
+  "2-addendum.md"
+ ],
+ "api": "tools/openapi.json",
+ "platform": true,
+ "stresses": [
+  "the only pack that can be simulated on the platform: it keeps the kit's tool API and the practice customers' accounts",
+  "three bands, other deadlines, three persuasion attempts",
+  "holidays on the day after the practice day and the Monday after it",
+  "callbacks for the next business day only",
+  "the exact day asked twice, then a flat refusal",
+  "a human is transferred at once",
+  "three tries to record a promise",
+  "other fixed sentences",
+  "another closing reason"
+ ]
+}

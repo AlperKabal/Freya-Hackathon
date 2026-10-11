@@ -1,0 +1,21 @@
+{
+ "title": "E: Meridian Business Bank (companies). A clean specification of 56 rules",
+ "tier": 1,
+ "docs": [
+  "brief.md"
+ ],
+ "stresses": [
+  "identity: company registration number with leading zeros and year founded",
+  "outcome table with no_contact",
+  "a tool API that does not say how many tries are left, and answers `success` instead of `ok`",
+  "Saturday is a business day; holidays on Saturdays",
+  "a calendar-day deadline, a month-end deadline, a band with no persuasion attempt",
+  "an offer of half the amount",
+  "attempts counted for the whole call",
+  "a refused facility gets no note",
+  "no retry when a promise fails",
+  "a callback the contact asks for",
+  "a date after the deadline is refused, not replaced",
+  "`local_time` with a space, not a T"
+ ]
+}

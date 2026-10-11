@@ -1,0 +1,19 @@
+result;detail;used when;used by
+arrangement;;at least one promise was recorded (3.8, 3.10);assistant
+settled;;the customer says the overdue amount is already paid (3.9 a);assistant
+handed_over;welfare;hardship, hand-over accepted (3.7);assistant
+handed_over;complaints;complaint (3.9 c);assistant
+handed_over;agent_request;the customer asks for a person (3.9 e);assistant
+handed_over;plans;payment plan request (3.9 d);withdrawn by memo 2026/41
+no_arrangement;declined;"attempts used up (3.7); the customer does not want the call (3.9 f)";assistant
+no_arrangement;hardship;hardship, hand-over declined (3.7);assistant
+no_arrangement;disputed;the account is disputed (3.9 b);assistant
+no_arrangement;system_fault;the promise could not be saved (3.8);assistant
+unverified;failed_security;two wrong answers (3.3);assistant
+unverified;refused_security;"refuses the security questions (3.3); does not want the call, before security (3.9 f)";assistant
+unreached;callback_booked;a callback was booked (3.2);assistant
+unreached;no_callback;no callback was possible (3.2);assistant
+unreached;wrong_number;wrong number (3.2);assistant
+unreached;deceased;the customer has died (3.2);assistant
+unreached;not_confirmed;the person never confirmed who they are (email, point 4);assistant
+legal_review;;the account was passed to Legal;recoveries team only, never the assistant
