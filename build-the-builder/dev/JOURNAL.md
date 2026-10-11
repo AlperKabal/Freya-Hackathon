@@ -788,4 +788,8 @@ nothing new was created in the workspace. Results in `results/check-*.json` (not
   noted `service_error` and said so. RULE-B-dispute-one, RULE-B-both-paid and RULE-B-paid-and-refused: 3/3 with the
   judge, which confirms the product extraction fix and the early close. A call in this run took 30 seconds, turns
   about 2 seconds.
+- **Three runs each, 16:04-16:15 UTC, agents from the reference SPECs at `609c66d` (mode orch)**: Brief B 3/3 in
+  every run (PUB-11, PUB-12, PUB-13 each 3 of 3); Brief A 10/10 in every run (every customer 3 of 3, PUB-06
+  included). No customer hung up. Slowest agent turn per call: Brief A median 4 to 7 s (worst 10 to 15 s), Brief B
+  median 14 to 17 s (worst 20 to 21 s): with three products the end of the call is the slow turn, as written above.
 

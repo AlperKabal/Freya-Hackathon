@@ -29,9 +29,9 @@ from "Mock briefs merged into `fix-agent-logic`" to the end, then `dev/mock_brie
 `test_mock_briefs` ends with "tier 1: 0, tier 2: 4, tier 3: 5" and exit code 0; the others say "all good" or "clean".
 The whole list takes about five minutes.
 
-On the platform, with agents built from the reference SPECs (mode orch) at `e1536cf`:
-Brief A **10/10** (one run), PUB-06 3/3 after 1/4 before the fix, Brief B **3/3** (one run), and the "already paid"
-scenarios pass with the judge.
+On the platform, with agents built from the reference SPECs (mode orch) at `609c66d`, three runs each
+(16:04-16:15 UTC): **Brief A 10/10 in every run, Brief B 3/3 in every run** (each customer 3 of 3), and the
+"already paid" and dispute scenarios pass with the judge. PUB-06 was 1 of 4 before the lowest amount was named.
 
 ## Confirmed on the platform after the outage (16:00 UTC, agent built from `609c66d`)
 
@@ -74,7 +74,8 @@ slots `yasar-tune-a`, `yasar-tune-ab`, `alper-*` belong to other work and must n
 
 ## Open, by value
 
-1. `--reps 3` on A and B (started at 16:04 UTC on this machine; results in `results/final.log`, not committed).
+1. Done: `--reps 3` on A and B (see above). What is left for the practice set is the Reader: these agents were
+   built with `--spec`, so a build without it (fresh extraction) should be run once on A and on A+B.
 2. Shorten the end-of-call chain (see above), then measure "slowest agent turn" again.
 3. The Reader on the mock briefs: `python3 dev/run_mock_briefs.py --extract` (about two minutes of model time per
    pack). It was never run. Packs D and H say one bank's rules in two forms, E and G the other's: the SPEC must come
