@@ -1,0 +1,19 @@
+outcome,reason,status,used when
+agreed,,active,at least one promise was recorded
+settled,,active,"no promise, and every facility was already paid (7.9 c)"
+escalated,insolvency,active,7.9 a
+escalated,manager_request,active,7.9 b
+escalated,support,active,"7.9 e, support desk accepted"
+escalated,legal,retired 2025,no longer used by anyone
+no_agreement,declined,active,"nothing promised (7.7); the contact does not want to talk (7.9 g)"
+no_agreement,difficulty,active,"7.9 e, support desk declined"
+no_agreement,contested,active,7.9 d
+no_agreement,system_error,active,the promise could not be recorded (7.8)
+no_agreement,callback_requested,active,7.9 f
+unverified,wrong_answers,active,three wrong answers (7.3)
+unverified,declined_checks,active,"declines the checks (7.3); does not want to talk, before verification (7.9 g)"
+no_contact,unconfirmed,active,the person never confirmed who they are
+no_contact,callback_booked,active,7.2
+no_contact,callback_refused,active,7.2
+no_contact,contact_left,active,7.2
+no_contact,ceased_trading,active,7.2

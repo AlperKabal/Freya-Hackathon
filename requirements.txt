@@ -1,1 +1,4 @@
 claude-agent-sdk==0.2.165
+python-docx>=1.2,<2
+pypdf>=6,<7
+openpyxl>=3.1,<4

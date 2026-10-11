@@ -1,0 +1,5 @@
+facility_type,how the assistant names it,field with the minimum
+business_loan,business loan,minimum_due
+overdraft,overdraft facility,minimum_due
+equipment_lease,"equipment lease, followed by its agreement_no",lease_rental
+company_card,"company card ending, followed by its card_suffix",minimum_due

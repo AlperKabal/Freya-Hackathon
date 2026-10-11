@@ -150,10 +150,44 @@ def _date(answer, hint):
     m = _re.fullmatch(r"\D*(\d{1,2})\s*[-/. ]\s*(\d{1,2})\s*[-/. ]\s*(\d{4})\D*", a)
     if m:                                                         # numbers only: the order the documents give, when it reads as a date
         first, second, year = int(m.group(1)), int(m.group(2)), m.group(3)
-        month_first = bool(_re.search(r"month[, ]+(?:then )?(?:the )?day|month first|mm[-/. ]dd", str(hint or "").lower()))
+        # "mm-dd" inside "yyyy-mm-dd" is the format the answer is SENT in, not the order the customer says it in
+        month_first = bool(_re.search(r"month[, ]+(?:then )?(?:the )?day|month first|(?<!y[-/. ])mm[-/. ]dd", str(hint or "").lower()))
         day, mon = (second, first) if month_first else (first, second)
         return _iso(year, mon, day) or answer
     return answer
+
+
+def _spelled(answer):
+    """A code said character by character: 'L S six two A B' -> 'LS62AB', 'S W nineteen five A E' -> 'SW195AE',
+    'double L one' -> 'LL1', 'LS6 two A B' -> 'LS62AB'. Single letters stay letters (also 'o' and 'a'), number words
+    become digits, a piece that is already written as letters with digits is kept. None when any word is something
+    else, or when nothing in it was spelled: then the answer is not this."""
+    toks = str(answer).split()
+    out, i, spelled = "", 0, False
+    while i < len(toks):
+        t = toks[i]
+        low = t.lower()
+        if low in _REPEAT and i + 1 < len(toks) and len(toks[i + 1]) == 1 and toks[i + 1].isalnum():
+            out += toks[i + 1] * _REPEAT[low]                      # 'double L', 'triple 7'
+            i, spelled = i + 2, True
+        elif len(t) == 1 and t.isalnum():
+            out += t
+            i, spelled = i + 1, True
+        elif t.isalpha() and _is_number_word(low) and low != "and":
+            j = i
+            while j < len(toks) and toks[j].isalpha() and _is_number_word(toks[j].lower()) and toks[j].lower() != "and" and len(toks[j]) > 1:
+                j += 1
+            digits = spoken_digits([w.lower() for w in toks[i:j]])
+            if not digits:
+                return None
+            out += digits
+            i, spelled = j, True
+        elif t.isalnum() and (_re.search(r"\d", t) or t.isupper()):
+            out += t                                               # a piece already written: 'LS6', '2AB', 'SW'
+            i += 1
+        else:
+            return None
+    return out if spelled and out else None
 
 
 def normalize_answer(kind, answer, hint=""):
@@ -170,6 +204,12 @@ def normalize_answer(kind, answer, hint=""):
         if kind == "text":
             h = str(hint or "").lower()
             a = _re.sub(r"\s+", " ", a)
+            # a code (the description speaks of spaces, characters, or letters with digits): the commas and full stops
+            # that speech adds between its characters are not part of it, and its characters may come one by one
+            if _re.search(r"no spaces?|without (?:a |any )?spaces?|characters?\b|alphanumeric|upper[- ]?case|capital letters|in capitals|"
+                          r"letters?\b.*\b(?:digits?|numbers?)|(?:digits?|numbers?)\b.*\bletters?", h):
+                plain = _re.sub(r"\s+", " ", _re.sub(r"[,.;:!?]+(?=\s|$)", " ", a)).strip()
+                a = _spelled(plain) or plain or a
             if _re.search(r"no spaces?|without (?:a |any )?spaces?", h):
                 a = a.replace(" ", "")
             if _re.search(r"upper[- ]?case|capital letters|in capitals", h):

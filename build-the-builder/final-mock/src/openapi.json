@@ -1,0 +1,1069 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Freya Bank synthetic voice services",
+    "version": "2026-10-01"
+  },
+  "servers": [
+    {
+      "url": "https://api.freyabank.example"
+    }
+  ],
+  "paths": {
+    "/voice/v1/cards.list": {
+      "post": {
+        "operationId": "cards.list",
+        "summary": "List eligible credit cards for the authenticated caller.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "customerNo": {
+                        "type": "string",
+                        "description": "The 8-digit customer number supplied by the call variable customerNumber."
+                      },
+                      "aiFlow": {
+                        "type": "string",
+                        "description": "CardOps"
+                      }
+                    },
+                    "required": [
+                      "customerNo"
+                    ]
+                  },
+                  "call": {
+                    "type": "object",
+                    "properties": {
+                      "ani": {
+                        "type": "string",
+                        "description": "Caller number if known; otherwise empty string."
+                      },
+                      "lang": {
+                        "type": "string",
+                        "description": "tr"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recorded bank answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "cards": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "cardNumber": {
+                                "type": "string"
+                              },
+                              "cardNumberLast4": {
+                                "type": "string"
+                              },
+                              "productName": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "type": "string"
+                              },
+                              "isMainCard": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        },
+                        "validCardsCount": {
+                          "type": "integer"
+                        },
+                        "exitState": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "guid": {
+                          "type": "string"
+                        },
+                        "returnCode": {
+                          "type": "string"
+                        },
+                        "messageText": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "properties": {
+                            "guid": {
+                              "type": "string"
+                            },
+                            "rootCause": {
+                              "type": "string"
+                            },
+                            "errorOrigin": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/voice/v1/cards.balance": {
+      "post": {
+        "operationId": "cards.balance",
+        "summary": "Get the chosen card statement debt by currency, statement date and due date.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "cardNumber": {
+                        "type": "string",
+                        "description": "The exact masked cardNumber returned by cards.list."
+                      }
+                    },
+                    "required": [
+                      "cardNumber"
+                    ]
+                  },
+                  "call": {
+                    "type": "object",
+                    "properties": {
+                      "ani": {
+                        "type": "string",
+                        "description": "Caller number if known; otherwise empty string."
+                      },
+                      "lang": {
+                        "type": "string",
+                        "description": "tr"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recorded bank answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "cardNumber": {
+                          "type": "string"
+                        },
+                        "cardNumberLast4": {
+                          "type": "string"
+                        },
+                        "productName": {
+                          "type": "string"
+                        },
+                        "statementDate": {
+                          "type": "string"
+                        },
+                        "lastPayDate": {
+                          "type": "string"
+                        },
+                        "nextStatementDate": {
+                          "type": "string"
+                        },
+                        "nextLastPayDate": {
+                          "type": "string"
+                        },
+                        "debtTL": {
+                          "type": "object",
+                          "properties": {
+                            "statementPaymentStatus": {
+                              "type": "string"
+                            },
+                            "transferAmount": {
+                              "type": "number"
+                            },
+                            "statementDebt": {
+                              "type": "number"
+                            },
+                            "minPayment": {
+                              "type": "number"
+                            },
+                            "remainingDebt": {
+                              "type": "number"
+                            },
+                            "remainingMinPayment": {
+                              "type": "number"
+                            },
+                            "currentPeriodExpense": {
+                              "type": "number"
+                            },
+                            "totalDebt": {
+                              "type": "number"
+                            },
+                            "totalDebtPaymentStatus": {
+                              "type": "string"
+                            },
+                            "remainAutomaticPaymentAmount": {
+                              "type": "number"
+                            }
+                          }
+                        },
+                        "debtUSD": {
+                          "type": "object",
+                          "properties": {
+                            "statementPaymentStatus": {
+                              "type": "string"
+                            },
+                            "transferAmount": {
+                              "type": "number"
+                            },
+                            "statementDebt": {
+                              "type": "number"
+                            },
+                            "minPayment": {
+                              "type": "number"
+                            },
+                            "remainingDebt": {
+                              "type": "number"
+                            },
+                            "remainingMinPayment": {
+                              "type": "number"
+                            },
+                            "currentPeriodExpense": {
+                              "type": "number"
+                            },
+                            "totalDebt": {
+                              "type": "number"
+                            },
+                            "totalDebtPaymentStatus": {
+                              "type": "string"
+                            },
+                            "remainAutomaticPaymentAmount": {
+                              "type": "number"
+                            }
+                          }
+                        },
+                        "debtEUR": {
+                          "type": "object",
+                          "properties": {
+                            "statementPaymentStatus": {
+                              "type": "string"
+                            },
+                            "transferAmount": {
+                              "type": "number"
+                            },
+                            "statementDebt": {
+                              "type": "number"
+                            },
+                            "minPayment": {
+                              "type": "number"
+                            },
+                            "remainingDebt": {
+                              "type": "number"
+                            },
+                            "remainingMinPayment": {
+                              "type": "number"
+                            },
+                            "currentPeriodExpense": {
+                              "type": "number"
+                            },
+                            "totalDebt": {
+                              "type": "number"
+                            },
+                            "totalDebtPaymentStatus": {
+                              "type": "string"
+                            },
+                            "remainAutomaticPaymentAmount": {
+                              "type": "number"
+                            }
+                          }
+                        },
+                        "debtGBP": {
+                          "type": "object",
+                          "properties": {
+                            "statementPaymentStatus": {
+                              "type": "string"
+                            },
+                            "transferAmount": {
+                              "type": "number"
+                            },
+                            "statementDebt": {
+                              "type": "number"
+                            },
+                            "minPayment": {
+                              "type": "number"
+                            },
+                            "remainingDebt": {
+                              "type": "number"
+                            },
+                            "remainingMinPayment": {
+                              "type": "number"
+                            },
+                            "currentPeriodExpense": {
+                              "type": "number"
+                            },
+                            "totalDebt": {
+                              "type": "number"
+                            },
+                            "totalDebtPaymentStatus": {
+                              "type": "string"
+                            },
+                            "remainAutomaticPaymentAmount": {
+                              "type": "number"
+                            }
+                          }
+                        },
+                        "statementPaymentStatus": {
+                          "type": "string"
+                        },
+                        "totalDebtPaymentStatus": {
+                          "type": "string"
+                        },
+                        "automaticPaymentFlag": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "guid": {
+                          "type": "string"
+                        },
+                        "returnCode": {
+                          "type": "string"
+                        },
+                        "messageText": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "properties": {
+                            "guid": {
+                              "type": "string"
+                            },
+                            "rootCause": {
+                              "type": "string"
+                            },
+                            "errorOrigin": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/voice/v1/statement.week.get": {
+      "post": {
+        "operationId": "statement.week.get",
+        "summary": "Get the chosen card current statement week, day and linked-card details.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "cardNumber": {
+                        "type": "string",
+                        "description": "The exact masked cardNumber returned by cards.list."
+                      }
+                    },
+                    "required": [
+                      "cardNumber"
+                    ]
+                  },
+                  "call": {
+                    "type": "object",
+                    "properties": {
+                      "ani": {
+                        "type": "string",
+                        "description": "Caller number if known; otherwise empty string."
+                      },
+                      "lang": {
+                        "type": "string",
+                        "description": "tr"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recorded bank answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "cardNumber": {
+                          "type": "string"
+                        },
+                        "cardNumberLast4": {
+                          "type": "string"
+                        },
+                        "productName": {
+                          "type": "string"
+                        },
+                        "statementWeek": {
+                          "type": "integer"
+                        },
+                        "statementDay": {
+                          "type": "integer"
+                        },
+                        "statementDate": {
+                          "type": "string"
+                        },
+                        "lastPayDate": {
+                          "type": "string"
+                        },
+                        "nextStatementDate": {
+                          "type": "string"
+                        },
+                        "nextLastPayDate": {
+                          "type": "string"
+                        },
+                        "relationType": {
+                          "type": "string"
+                        },
+                        "relatedCardNumber": {
+                          "type": "string"
+                        },
+                        "relatedCardProductName": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "guid": {
+                          "type": "string"
+                        },
+                        "returnCode": {
+                          "type": "string"
+                        },
+                        "messageText": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "properties": {
+                            "guid": {
+                              "type": "string"
+                            },
+                            "rootCause": {
+                              "type": "string"
+                            },
+                            "errorOrigin": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/voice/v1/statement.week.decide": {
+      "post": {
+        "operationId": "statement.week.decide",
+        "summary": "Preview new statement and due dates for a requested week without changing it.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "cardNumber": {
+                        "type": "string",
+                        "description": "The exact masked cardNumber returned by cards.list."
+                      },
+                      "newStatementWeek": {
+                        "type": "integer",
+                        "description": "Requested week 1 through 4; different from current statementWeek."
+                      },
+                      "statementDay": {
+                        "type": "integer",
+                        "description": "Current statementDay returned by statement.week.get."
+                      }
+                    },
+                    "required": [
+                      "cardNumber",
+                      "newStatementWeek",
+                      "statementDay"
+                    ]
+                  },
+                  "call": {
+                    "type": "object",
+                    "properties": {
+                      "ani": {
+                        "type": "string",
+                        "description": "Caller number if known; otherwise empty string."
+                      },
+                      "lang": {
+                        "type": "string",
+                        "description": "tr"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recorded bank answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "statementDate": {
+                          "type": "string"
+                        },
+                        "statementDueDate": {
+                          "type": "string"
+                        },
+                        "statementDay": {
+                          "type": "integer"
+                        },
+                        "responseCode": {
+                          "type": "integer"
+                        },
+                        "responseMessage": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "guid": {
+                          "type": "string"
+                        },
+                        "returnCode": {
+                          "type": "string"
+                        },
+                        "messageText": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "properties": {
+                            "guid": {
+                              "type": "string"
+                            },
+                            "rootCause": {
+                              "type": "string"
+                            },
+                            "errorOrigin": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/voice/v1/statement.week.change": {
+      "post": {
+        "operationId": "statement.week.change",
+        "summary": "Change statement week after explicit caller confirmation of previewed dates.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "cardNumber": {
+                        "type": "string",
+                        "description": "The exact masked cardNumber returned by cards.list."
+                      },
+                      "newStatementWeek": {
+                        "type": "integer",
+                        "description": "Requested week that was previewed with statement.week.decide."
+                      },
+                      "statementDay": {
+                        "type": "integer",
+                        "description": "Current statementDay returned by statement.week.get."
+                      }
+                    },
+                    "required": [
+                      "cardNumber",
+                      "newStatementWeek",
+                      "statementDay"
+                    ]
+                  },
+                  "call": {
+                    "type": "object",
+                    "properties": {
+                      "ani": {
+                        "type": "string",
+                        "description": "Caller number if known; otherwise empty string."
+                      },
+                      "lang": {
+                        "type": "string",
+                        "description": "tr"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recorded bank answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "responseCode": {
+                          "type": "integer"
+                        },
+                        "responseMessage": {
+                          "type": "string"
+                        },
+                        "statementWeek": {
+                          "type": "string"
+                        },
+                        "statementDay": {
+                          "type": "string"
+                        },
+                        "exitState": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "guid": {
+                          "type": "string"
+                        },
+                        "returnCode": {
+                          "type": "string"
+                        },
+                        "messageText": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "properties": {
+                            "guid": {
+                              "type": "string"
+                            },
+                            "rootCause": {
+                              "type": "string"
+                            },
+                            "errorOrigin": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/voice/v1/contact.email.get": {
+      "post": {
+        "operationId": "contact.email.get",
+        "summary": "Get the registered e-mail address of the authenticated caller.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "customerNo": {
+                        "type": "string",
+                        "description": "The 8-digit customer number supplied by the call variable customerNumber."
+                      },
+                      "intAddressInfoType": {
+                        "type": "string",
+                        "description": "E for email lookup."
+                      }
+                    },
+                    "required": [
+                      "customerNo",
+                      "intAddressInfoType"
+                    ]
+                  },
+                  "call": {
+                    "type": "object",
+                    "properties": {
+                      "ani": {
+                        "type": "string",
+                        "description": "Caller number if known; otherwise empty string."
+                      },
+                      "lang": {
+                        "type": "string",
+                        "description": "tr"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recorded bank answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "communicationType": {
+                          "type": "string"
+                        },
+                        "ibanCountryCode": {
+                          "type": "string"
+                        },
+                        "ibanAreaCode": {
+                          "type": "string"
+                        },
+                        "ibanPhoneNum": {
+                          "type": "string"
+                        },
+                        "ibanEmail": {
+                          "type": "string"
+                        },
+                        "ttsEmail": {
+                          "type": "string"
+                        },
+                        "commGramType": {
+                          "type": "string"
+                        },
+                        "exitState": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "guid": {
+                          "type": "string"
+                        },
+                        "returnCode": {
+                          "type": "string"
+                        },
+                        "messageText": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "properties": {
+                            "guid": {
+                              "type": "string"
+                            },
+                            "rootCause": {
+                              "type": "string"
+                            },
+                            "errorOrigin": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/voice/v1/statement.pdf.send": {
+      "post": {
+        "operationId": "statement.pdf.send",
+        "summary": "Send the latest statement PDF to the registered e-mail after explicit confirmation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "customerNo": {
+                        "type": "string",
+                        "description": "The 8-digit customer number supplied by the call variable customerNumber."
+                      },
+                      "cardNumber": {
+                        "type": "string",
+                        "description": "The exact masked cardNumber returned by cards.list."
+                      },
+                      "currencyType": {
+                        "type": "string",
+                        "description": "TL, USD, EUR or GBP; choose the currency of the statement requested."
+                      },
+                      "statementDate": {
+                        "type": "string",
+                        "description": "The statementDate from cards.balance."
+                      },
+                      "emailAddress": {
+                        "type": "string",
+                        "description": "The registered ibanEmail from contact.email.get; never another address."
+                      }
+                    },
+                    "required": [
+                      "customerNo",
+                      "cardNumber",
+                      "currencyType",
+                      "statementDate",
+                      "emailAddress"
+                    ]
+                  },
+                  "call": {
+                    "type": "object",
+                    "properties": {
+                      "ani": {
+                        "type": "string",
+                        "description": "Caller number if known; otherwise empty string."
+                      },
+                      "lang": {
+                        "type": "string",
+                        "description": "tr"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recorded bank answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "exitState": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "guid": {
+                          "type": "string"
+                        },
+                        "returnCode": {
+                          "type": "string"
+                        },
+                        "messageText": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "properties": {
+                            "guid": {
+                              "type": "string"
+                            },
+                            "rootCause": {
+                              "type": "string"
+                            },
+                            "errorOrigin": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

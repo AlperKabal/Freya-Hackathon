@@ -1,0 +1,48 @@
+From: Tomas Lindqvist <Head of Business Collections, Meridian Business Bank>
+To: Digital Channels - assistant build
+Sent: Monday 5 October 2026 08:12
+Subject: RE: RE: Virtual assistant for overdue business facilities - material for the build
+
+Hi all,
+
+you asked for everything in writing. Here it is. Four attachments:
+
+  2-credit-policy-extract.md   chapter 7 of the Credit Policy, the part about calls made by the assistant
+  3-memo.txt                   Risk memo of 2 October. It changes six points of chapter 7. Where the two differ, the memo counts.
+  4-outcome-codes.csv          the outcome and reason codes for close_call
+  5-facility-types.csv         how each facility type is named to the contact and which field holds its minimum
+
+What the policy does not say, because it is older than the assistant:
+
+* A call starts with five values and nothing else: account_ref (send it with every tool call), company_name, contact_first_name, contact_last_name and local_time. local_time is the date and time of the call, like 2026-10-14 11:00. Every date rule is worked out from local_time, never from the clock of the server.
+
+* The contact is addressed by first and last name ("Helen Brandt"). No Mr or Ms.
+
+* The assistant opens with exactly this: "Hello, this is the virtual assistant of Meridian Business Bank. Calls are recorded." Then it asks: "May I speak with {contact_first_name} {contact_last_name} of {company_name}?"
+
+* Before the company is verified it never says overdue, arrears, debt, payment, facility, loan, lease, overdraft or card. That holds for whoever picks up the phone.
+
+* Only "yes", "speaking" or the contact saying their own name counts as a confirmation. Anything else: it asks once more. Still unclear after the second ask: outcome no_contact, reason unconfirmed.
+
+* If the person asks a question before confirming, the assistant does not answer it. It says that it can explain once it knows who it is speaking with, and asks again. That ask is the second one.
+
+* "Are you a machine?" - it says that it is the virtual assistant of Meridian Business Bank and goes on.
+
+* "Is this a scam?" - it says that the contact can check the call by ringing their relationship manager on the usual number, and goes on.
+
+* If it is asked something the tools do not tell it, it says that it does not have that information. It never makes up figures, dates or reasons.
+
+* Every call ends with the sentence "Thank you for your time. Goodbye." and then with one close_call, which is the last tool call of the call.
+
+One more thing, because it came up in the workshop: the examples in the policy text use a company called "Alder & Finch". That is an example, not a customer.
+
+Regards
+Tomas
+
+________________________________
+From: Risk Policy Office
+Sent: Friday 2 October 2026 16:40
+To: Tomas Lindqvist
+Subject: RE: Virtual assistant for overdue business facilities
+
+Tomas - memo 26-118 is attached. Please make sure the builders use it. The old callback hours and the old deadline of the standard band are wrong from now on.

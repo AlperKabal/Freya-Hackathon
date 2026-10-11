@@ -129,6 +129,108 @@ def last_resort(docs, tools, t):
         return []
 
 
+SKIP = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".zip", ".mp3", ".wav", ".mp4", ".lock", ".pyc")
+
+
+def case_main(a):
+    """A folder of documents and the address of the bank's services: the call can be of any kind, so the agent is
+    built from the Reader's script of the documents (builder/casework.py), not from a SPEC. The services are read
+    from a tool API file in the folder or, without one, from <address>/openapi.json; they are called at the address."""
+    import urllib.parse, urllib.request
+    from builder import casework
+    t0 = time.time()
+    url = next((str(f) for f in a.files if re.match(r"https?://", str(f))), os.environ.get("FREYA_MOCK_URL", "")).rstrip("/")
+    paths = [pathlib.Path(resolve_path(f)) for f in a.files if not re.match(r"https?://", str(f))]
+    files = []
+    for p in paths:
+        found = [p] if p.is_file() else sorted((x for x in p.rglob("*") if x.is_file()),
+            key=lambda x: (0 if x.parent == p and x.name.lower() == "brief.md" else 1, str(x).lower())) if p.is_dir() else []
+        files += [str(x) for x in found if x.suffix.lower() not in SKIP and not any(part.startswith(".") or part == "node_modules" for part in x.parts)]
+    a.slot = a.slot or default_slot([str(p) for p in paths] or ["case"])
+    t = Trace(KIT / "traces", a.slot)
+    out, status = pathlib.Path(a.out), "error"
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        apis = [f for f in files if ingest.looks_like_api(f)]
+        root = ingest.load_api(apis[-1]) if apis else None
+        docs = [d for d in ingest.read_briefs([f for f in files if f not in apis]) if d["text"].strip()]
+        if root is None and not url:
+            raise ValueError("a service-contract folder needs the mock URL as an argument or FREYA_MOCK_URL")
+        tools = ingest.parse_api(root)["tools"] if root else {}
+        tool_source = f"local API file {apis[-1]}" if root else "service contract"
+        if not tools and docs:
+            try:
+                llm.set_deadline(t0 + BUDGET * 0.35)
+                extracted = llm.run(casework.read_contract(docs, t))
+                (out / f"{a.slot}.contract.json").write_text(json.dumps(extracted, indent=1, ensure_ascii=False), encoding="utf-8")
+                tools = casework.contract_tools(extracted, url)
+                t.event("ingest", f"contract extraction: {len(tools)} operation(s) from documents")
+            except Exception as e:
+                t.event("warning", f"contract extraction failed ({type(e).__name__}: {str(e)[:180]})")
+        if not tools and url:  # optional discovery only when the contract is unreadable
+            req = urllib.request.Request(url + "/openapi.json", headers={"User-Agent": "Mozilla/5.0 (build-the-builder)"})
+            root = json.loads(urllib.request.urlopen(req, timeout=30).read().decode("utf-8"))
+            tools = ingest.parse_api(root)["tools"] if root else {}
+            tool_source = "mock API discovery fallback"
+        if url:                                          # the services are called where the caller says they are
+            base = ingest._base_url(root) if root else ""
+            for tool in tools.values():
+                tool["url"] = url + (tool["url"][len(base):] if base and tool["url"].startswith(base) else urllib.parse.urlparse(tool["url"]).path)
+        t.event("input", f"case: {len(docs)} document(s), {sum(len(d['text']) for d in docs)} chars, from {[str(p) for p in paths]}; services at {url or 'the tool API file'}")
+        t.event("ingest", f"services: {', '.join(sorted(tools)) or 'none'} (from {tool_source})")
+        if a.design:
+            design = casework.clean(json.loads(pathlib.Path(a.design).read_text(encoding="utf-8")))
+            t.event("spec", f"script from file {a.design} (no model call)")
+        else:
+            llm.set_deadline(t0 + BUDGET * 0.8)
+            design = llm.run(casework.read_case(docs, tools, t))
+        (out / f"{a.slot}.design.json").write_text(json.dumps(design, indent=1, ensure_ascii=False), encoding="utf-8")
+        t.event("spec", f"script: language={design['language']!r}, variables={design['variables']}, {len(design['script'])} chars, "
+                        f"{len(design['services'])} service note(s), endings={[e['id'] for e in design['endings']]}, {len(design['decided'])} conflict(s) decided")
+        for d in design["decided"][:30]:
+            t.event("audit", f"{str(d.get('conflict', ''))[:140]} -> {str(d.get('holds', ''))[:140]}")
+        speech = None
+        saved = pathlib.Path(str(a.design)[:-len(".design.json")] + ".speech.py") if a.design and str(a.design).endswith(".design.json") else None
+        if os.environ.get("BUILDER_PREPARED_SPEECH", "1") != "0" and tools:
+            try:                                         # sentences and decisions computed in code; without it the model composes them
+                if a.design:
+                    speech = casework.parse_code(saved.read_text(encoding="utf-8")) if saved and saved.exists() else None
+                    t.event("spec", f"prepare() from file {saved} (no model call)" if speech else "no prepare() file next to the script: the agent composes every sentence itself")
+                else:
+                    llm.set_deadline(t0 + BUDGET * 0.92)
+                    speech, report = llm.run(casework.read_speech(design, tools, docs, t))
+                    (out / f"{a.slot}.speech.py").write_text(speech, encoding="utf-8")
+                    t.event("selftest", report)
+            except Exception as e:
+                speech = None
+                t.event("warning", f"no prepared speech ({type(e).__name__}: {str(e)[:220]}): the agent composes every sentence itself")
+        wf, shim = casework.assemble(design, tools, speech=speech)
+        problems = casework.problems(wf, shim, tools)
+        t.event("generate", f"{len(wf['nodes'])} nodes, {len(wf['nodes']['talk']['tools'])} tools")
+        t.event("selftest", f"lint and local runs of every code node and hook: {'pass' if not problems else str(len(problems)) + ' problem(s): ' + '; '.join(problems[:6])}")
+        (out / f"{a.slot}.workflow.json").write_text(json.dumps(wf, indent=1, ensure_ascii=False), encoding="utf-8")
+        if a.no_save:
+            status = "ok (not saved)"
+            return 0
+        import freya
+        freya.validate_workflow(a.slot + " dry run", wf)
+        t.event("selftest", "dry run (validate_workflow): pass")
+        ids = freya.save_workflow(a.slot, wf, state_file=str(KIT / ".freya-agents.json"))
+        t.event("freya", f"saved and published: workflow_id={ids['workflow_id']} agent_id={ids['agent_id']} version={ids.get('version', 1)}")
+        exp = freya.export_workflow(ids["workflow_id"], str(out / f"{a.slot}.export.json"))
+        t.event("freya", f"exported -> {exp}")
+        print(json.dumps(ids))
+        status = "ok"
+        return 0
+    except Exception as e:
+        t.event("error", f"{type(e).__name__}: {str(e)[:400]}")
+        return 1
+    finally:
+        llm.set_deadline(None)
+        t.event("time", f"{time.time() - t0:.0f} s of a {BUDGET:.0f} s budget")
+        print(f"trace: {t.close(status)}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("files", nargs="+", help="brief files and the tool API file")
@@ -138,7 +240,10 @@ def main(argv=None):
     # orch is the shipped mode (decided 11 October): the official run command passes no --mode
     ap.add_argument("--mode", choices=list(MODES), default="orch", help="orch (default): code decides every offer; v1: one LLM negotiation node")
     ap.add_argument("--out", default=str(KIT / "out"))
+    ap.add_argument("--design", help="case folder: use this script file instead of asking the Reader")
     a = ap.parse_args(argv)
+    if any(re.match(r"https?://", str(f)) or pathlib.Path(resolve_path(f)).is_dir() for f in a.files):
+        return case_main(a)
     briefs, api_path = pick_inputs([resolve_path(f) for f in a.files])
     if not api_path or not briefs:
         sys.exit("give one or more brief files and the tool API file")

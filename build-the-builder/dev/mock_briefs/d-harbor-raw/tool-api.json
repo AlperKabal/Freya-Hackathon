@@ -1,0 +1,574 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "Harbor Retail Bank - arrears assistant tools (mock, not an organiser file)",
+  "version": "mock"
+ },
+ "servers": [
+  {
+   "url": "https://{env}.harbor-retail.invalid/collections/v3",
+   "variables": {
+    "env": {
+     "default": "sandbox"
+    }
+   }
+  }
+ ],
+ "components": {
+  "schemas": {
+   "Caller": {
+    "type": "object",
+    "properties": {
+     "customer_ref": {
+      "type": "string",
+      "description": "Identifies the call. Goes into every request."
+     }
+    },
+    "required": [
+     "customer_ref"
+    ]
+   },
+   "Result": {
+    "type": "object",
+    "properties": {
+     "ok": {
+      "type": "boolean"
+     },
+     "error": {
+      "type": [
+       "string",
+       "null"
+      ]
+     }
+    }
+   },
+   "verifyIdentityRequest": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Caller"
+     },
+     {
+      "type": "object",
+      "properties": {
+       "question": {
+        "type": "string",
+        "enum": [
+         "postcode",
+         "birth_year"
+        ]
+       },
+       "value": {
+        "type": "string",
+        "description": "For postcode: capital letters, no space (LS62AB). For birth_year: four digits."
+       }
+      },
+      "required": [
+       "question",
+       "value"
+      ]
+     }
+    ]
+   },
+   "verifyIdentityResponse": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Result"
+     },
+     {
+      "type": "object",
+      "properties": {
+       "matched": {
+        "type": "boolean"
+       },
+       "tries_left": {
+        "type": "integer"
+       },
+       "passed": {
+        "type": "boolean"
+       },
+       "advice": {
+        "type": "string",
+        "enum": [
+         "partial_postcode"
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "getAccountRequest": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Caller"
+     },
+     {
+      "type": "object",
+      "properties": {},
+      "required": []
+     }
+    ]
+   },
+   "getAccountResponse": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Result"
+     },
+     {
+      "type": "object",
+      "properties": {
+       "accounts": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "account_id": {
+           "type": "string"
+          },
+          "kind": {
+           "type": "string",
+           "enum": [
+            "credit_card",
+            "personal_loan",
+            "arranged_overdraft"
+           ]
+          },
+          "last_digits": {
+           "type": "string"
+          },
+          "arrears": {
+           "type": "number"
+          },
+          "days_overdue": {
+           "type": "integer"
+          },
+          "min_payment": {
+           "type": "number"
+          },
+          "monthly_instalment": {
+           "type": "number"
+          }
+         }
+        }
+       }
+      }
+     }
+    ]
+   },
+   "createPromiseRequest": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Caller"
+     },
+     {
+      "type": "object",
+      "properties": {
+       "account_id": {
+        "type": "string"
+       },
+       "promise_amount": {
+        "type": "number"
+       },
+       "pay_on": {
+        "type": "string",
+        "format": "date"
+       }
+      },
+      "required": [
+       "account_id",
+       "promise_amount",
+       "pay_on"
+      ]
+     }
+    ]
+   },
+   "createPromiseResponse": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Result"
+     },
+     {
+      "type": "object",
+      "properties": {
+       "reference": {
+        "type": "string"
+       }
+      }
+     }
+    ]
+   },
+   "addNoteRequest": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Caller"
+     },
+     {
+      "type": "object",
+      "properties": {
+       "account_id": {
+        "type": "string"
+       },
+       "code": {
+        "type": "string",
+        "enum": [
+         "declined",
+         "hardship",
+         "disputed",
+         "already_paid",
+         "system_fault"
+        ]
+       },
+       "comment": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "account_id",
+       "code"
+      ]
+     }
+    ]
+   },
+   "addNoteResponse": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Result"
+     },
+     {
+      "type": "object",
+      "properties": {}
+     }
+    ]
+   },
+   "scheduleCallbackRequest": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Caller"
+     },
+     {
+      "type": "object",
+      "properties": {
+       "on_date": {
+        "type": "string",
+        "format": "date"
+       },
+       "at_time": {
+        "type": "string",
+        "description": "HH:MM, 24-hour clock"
+       }
+      },
+      "required": [
+       "on_date",
+       "at_time"
+      ]
+     }
+    ]
+   },
+   "scheduleCallbackResponse": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Result"
+     },
+     {
+      "type": "object",
+      "properties": {}
+     }
+    ]
+   },
+   "transferToAgentRequest": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Caller"
+     },
+     {
+      "type": "object",
+      "properties": {
+       "team": {
+        "type": "string",
+        "enum": [
+         "care",
+         "complaints",
+         "agents"
+        ]
+       }
+      },
+      "required": [
+       "team"
+      ]
+     }
+    ]
+   },
+   "transferToAgentResponse": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Result"
+     },
+     {
+      "type": "object",
+      "properties": {}
+     }
+    ]
+   },
+   "closeCallRequest": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Caller"
+     },
+     {
+      "type": "object",
+      "properties": {
+       "result": {
+        "type": "string",
+        "enum": [
+         "arrangement",
+         "settled",
+         "handed_over",
+         "no_arrangement",
+         "unverified",
+         "unreached",
+         "legal_review"
+        ]
+       },
+       "detail": {
+        "type": "string",
+        "description": "Required for handed_over, no_arrangement, unverified and unreached. Leave it out for arrangement and settled."
+       }
+      },
+      "required": [
+       "result"
+      ]
+     }
+    ]
+   },
+   "closeCallResponse": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Result"
+     },
+     {
+      "type": "object",
+      "properties": {}
+     }
+    ]
+   }
+  }
+ },
+ "paths": {
+  "/tools/verify-identity": {
+   "post": {
+    "summary": "Check one security answer. Two wrong answers in total end the check.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/verifyIdentityRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`ok` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/verifyIdentityResponse"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    },
+    "operationId": "verifyIdentity"
+   }
+  },
+  "/tools/get-account": {
+   "post": {
+    "summary": "The overdue accounts. Refused until both questions are passed.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/getAccountRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`ok` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/getAccountResponse"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    },
+    "operationId": "getAccount"
+   }
+  },
+  "/tools/create-promise": {
+   "post": {
+    "summary": "Record a payment promise. One per account.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/createPromiseRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`ok` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/createPromiseResponse"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    },
+    "operationId": "createPromise"
+   }
+  },
+  "/tools/add-note": {
+   "post": {
+    "summary": "Record why an account ended without a promise.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/addNoteRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`ok` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/addNoteResponse"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    },
+    "operationId": "addNote"
+   }
+  },
+  "/tools/schedule-callback": {
+   "post": {
+    "summary": "Book a callback.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/scheduleCallbackRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`ok` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/scheduleCallbackResponse"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    },
+    "operationId": "scheduleCallback"
+   }
+  },
+  "/tools/transfer-to-agent": {
+   "post": {
+    "summary": "Hand the call to a team.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/transferToAgentRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`ok` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/transferToAgentResponse"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    },
+    "operationId": "transferToAgent"
+   }
+  },
+  "/tools/close-call": {
+   "post": {
+    "summary": "End the call. Always the last tool call. Nothing is accepted after it.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/closeCallRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`ok` is false when the action was not carried out.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/closeCallResponse"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The service failed. Nothing was recorded. The call may be repeated."
+     }
+    },
+    "operationId": "closeCall"
+   }
+  }
+ }
+}

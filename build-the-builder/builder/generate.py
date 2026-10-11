@@ -52,12 +52,25 @@ def times(n):
     return {1: "once", 2: "twice"}.get(n, f"{n} times")
 
 
+def _plain(t):
+    return re.sub(r"([a-z])\1+", r"\1", re.sub(r"[^a-z0-9]+", " ", str(t or "").lower()).strip())
+
+
 def stem_in(stem, text):
     """Does the text hold this word stem (or phrase) at the start of a word? The same comparison as has_evidence in
     snippets/negotiation.py, which runs on the platform and cannot be imported here."""
-    def plain(t):
-        return re.sub(r"([a-z])\1+", r"\1", re.sub(r"[^a-z0-9]+", " ", str(t or "").lower()).strip())
-    return bool(plain(stem)) and (" " + plain(stem)) in (" " + plain(text))
+    return bool(_plain(stem)) and (" " + _plain(stem)) in (" " + _plain(text))
+
+
+def word_in(word, text):
+    """Does the text hold this word (or phrase) as whole words?"""
+    return bool(_plain(word)) and (" " + _plain(word) + " ") in (" " + _plain(text) + " ")
+
+
+# the words of the sentences the state machine itself says (snippets/negotiation.py): a customer may repeat any of them
+OWN_FIXED = ("can you pay for your on today tomorrow instead could you make that payment which exact day could you pay on which day can you pay "
+             "that day is not possible the latest date i can record is it let me read your promise back you will pay and does that work for you "
+             "sorry could you say that again")
 
 
 # A sentence that code writes into a spoken variable is said as it stands: the platform fills {{name}} only in a
@@ -413,7 +426,7 @@ vars['id_state'] = 'open'
         if x["scope"] != "call" or x.get("offer") or not set(x["stages"]) & {"identity", "negotiation", "confirmation"}:
             return ""
         words = self.evidence(x)
-        ex = (" (words like: " + ", ".join(f"'{w}'" for w in words[:6]) + ")") if words else ""
+        ex = (" (words like: " + ", ".join(f"'{w.lstrip('=')}'" for w in words[:6]) + ")") if words else ""
         return (" Only when the customer says this clearly and explicitly. A plain no, saying they cannot pay, or asking"
                 " what options or other ways there are is, by itself, NOT this. But when the same message also asks for exactly this"
                 + ex + ", it IS this, even if it also says they cannot pay.")
@@ -434,7 +447,18 @@ vars['id_state'] = 'open'
                         s["confirmation"]["question"]] + [p["spoken_name"] for p in s["account"]["product_types"]])
         own = PH.sub(" ", own)                                   # placeholders are not words anyone says
         words = [w.strip().lower() for w in x.get("evidence_words") or [] if isinstance(w, str)]
-        return [w for w in words if len(re.sub(r"[^a-z0-9]", "", w)) >= 3 and not stem_in(w, own)]
+        out = []
+        for w in words:
+            if len(re.sub(r"[^a-z0-9]", "", w)) < 3:
+                continue
+            if not stem_in(w, own):
+                out.append(w)
+            elif not word_in(w, own + " " + OWN_FIXED):
+                # only a longer word of the agent's sentences begins like it (a product name that starts with the
+                # word for a human being): as a stem it would be an echo, as a whole word it is still the customer's
+                # own request ("=" marks that)
+                out.append("=" + w)
+        return out
 
     def sit_trigger(self, x, with_not=False):
         t = x["trigger"]
@@ -460,7 +484,8 @@ vars['id_state'] = 'open'
         if not tp["enabled"]:
             return
         sits = [x for x in self.stage_situations("third_party") if x["threshold"] <= 1 and not x.get("offer")]
-        scheduled = self.exit("callback_scheduled", cb["scheduled"]["outcome"], cb["scheduled"]["reason"], self.farewell())
+        # a brief that books no callback has no "booked" close: a node nothing leads to would be a lint problem
+        scheduled = self.exit("callback_scheduled", cb["scheduled"]["outcome"], cb["scheduled"]["reason"], self.farewell()) if cb["enabled"] else None
         not_sched = self.exit("callback_not_scheduled", cb["not_scheduled"]["outcome"], cb["not_scheduled"]["reason"], self.farewell())
         window = self.cb_window()
         task = (f"The person on the line is NOT {self.addr()}. " + " ".join(tp["instructions"]) + " "
@@ -641,12 +666,15 @@ def _fill(template, values):
     return _re.sub(r'[{]([a-zA-Z_][a-zA-Z0-9_]*)[}]', lambda m: str(values.get(m.group(1), '')), template)
 def _money(x):
     return '%.2f' % float(x)
+# a lowest amount is named by its field's own words only when they end as a thing one can pay ("minimum payment",
+# "instalment amount", "lease rental"); other field names ("monthly", "floor") are no words for a customer
+NOUNS = ('payment', 'repayment', 'amount', 'instalment', 'installment', 'due', 'rate', 'rental', 'fee', 'sum', 'minimum', 'contribution', 'premium')
 def _amount(rule, full, floor):
     k = rule.get('kind')
     if k == 'floor':
         return floor
     if k == 'percent_of_full':
-        return round(full * float(rule.get('percent', 100)) / 100.0, 2)
+        return int(full * float(rule.get('percent', 100)) + 0.5 + 1e-6) / 100.0        # to the cent, half a cent up
     return full
 try:
     now = parse_now(vars.get(CFG['now_var'])) or _dt.datetime.now()
@@ -664,7 +692,7 @@ try:
             full = float(p.get(pf['past_due']))
             days = int(float(p.get(pf['days_late'])))
             floor = float(p.get(typ['floor_field'])) if typ and p.get(typ['floor_field']) is not None else full
-            floor_name = typ['floor_field'].replace('_', ' ') if typ else 'minimum amount'
+            floor_name = _re.sub('(?<![a-z])min(?![a-z])', 'minimum', typ['floor_field'].replace('_', ' ')) if typ else 'minimum amount'
             name = _fill(typ['spoken_name'], p) if typ else str(p.get(pf['type'])).replace('_', ' ')
             band = band_for(days, CFG)
             deadline = deadline_for(band, today, CFG) if band else None
@@ -685,6 +713,8 @@ try:
                     d = apply_date_rule(st['date'], today, CFG, deadline)
                     if d and d < first_day:              # an offer is never for a day before the earliest one
                         d = first_day
+                    if d and CFG.get('business_day_only', True) and not is_business_day(d, CFG):
+                        d = next_business_day(d, CFG)    # "in three days" on a Sunday: the agent's own offer is for a business day
                     if d and deadline and d > deadline:
                         d = deadline
                     k = st['amount'].get('kind')
@@ -722,7 +752,8 @@ try:
                               + spoken(first_day) + ' (' + first_day.isoformat() + ') instead.')
             plan.append(dict(name=name, full=round(full, 2), floor=round(min(floor, full), 2), today=today.isoformat(), first_day=first_day.isoformat(), ask_day=ask_day.isoformat(), statement=intro[-1],
                              first=am['first_offer'], lo=min(am['accept_min'], am['accept_max']), hi=am['accept_max'], tm=am['too_much'], bm=am['below_min'],
-                             deadline=deadline.isoformat() if deadline else '', ladder=lad, spoken=spoken_days))
+                             deadline=deadline.isoformat() if deadline else '', ladder=lad, spoken=spoken_days,
+                             floor_name=floor_name if typ and typ['floor_field'] != pf['past_due'] and floor_name.split()[-1] in NOUNS else ''))
         # A short calendar: weekdays and deadlines only. Named days are checked by the date_check code node,
         # so the model never needs to apply the date rules to this list itself (and a short prompt is a fast turn).
         last = max([dd for (dd, n, name) in dls if dd] or [today])
@@ -1060,7 +1091,11 @@ except Exception:
                  enum=["yes", "no"]),
             extr("day_text", "The payment day the customer names in the LATEST message, copied exactly as said ('tomorrow', 'next Friday', 'the 26th'). Empty if none."),
             extr("amount_text", "The amount the customer names in the LATEST message, copied exactly as said ('two hundred', '150'). Empty if none."),
-            extr("about_text", "Which product the LATEST message is about, copied as said ('the car loan', 'all of them'). Empty if not said.")]
+            extr("about_text", "Which product the LATEST message is about, copied as said ('the car loan', 'all of them'). "
+                 + ("When the message says one of these things about a product, copy THAT product, also when the message then goes on to other products: "
+                    + " | ".join(x["trigger"].strip().rstrip(".") for x in neg_sits if x["id"] in nc["product_situations"]) + ". "
+                    if nc["product_situations"] else "")
+                 + "Empty if not said.")]
         if evidence:
             # the customer's own words, for the evidence check in code; a copy needs no confidence gate
             self.orch_extraction.append(extr("said_text", "The customer's LATEST message, copied word for word, without shortening or rewording it.", conf=0.05))
@@ -1111,6 +1146,10 @@ try:
         else:
             st, say2, nxt = step(st, ev, plan, now.date(), CFG)
             say = say2 or say
+            if nxt == 'close' and say2:
+                # the negotiation ends on this turn and no step speaks any more: a sentence the state machine still
+                # owes the customer (a situation's prescribed words on the last open product) is said with the farewell
+                vars['close_say'] = _say(say2).strip()
             if say.startswith('ASK_FIRST: '):
                 say, nxt = say[len('ASK_FIRST: '):], 'ask'
                 instr = ('The customer asked for something you cannot offer on this call. Say so in one short sentence, without naming or describing any alternative.' if unsure
@@ -1119,6 +1158,16 @@ try:
             elif nxt == 'talk' and say and str(vars.get('asks_question') or '') == 'yes':
                 # a refusal (or an answer) with a question in it: the turn is decided as usual, the question is answered too
                 nxt, instr = 'ask', 'Answer the customer question in one short sentence, using only the facts given.'
+    if nxt == 'ask':
+        try:                                     # what is on the table, as a fact for the answer (never a new offer)
+            cx, cp = st['p'][st['cursor']], plan[st['cursor']]
+            if cx['status'] == 'open' and st.get('phase') != 'confirm':
+                fn = str(cp.get('floor_name') or '')
+                low = bool(fn) and cx['offer_amt'] < cp['full'] and abs(cx['offer_amt'] - cp['floor']) < 0.005
+                instr += (' The offer that is open is ' + ('%.2f' % float(cx['offer_amt'])) + (' (the ' + fn + ')' if low else '') + ' for the ' + cp['name']
+                          + ' on ' + str(cp['spoken'].get(cx['offer_date'], cx['offer_date'])) + ', and the full amount is ' + ('%.2f' % float(cp['full'])) + '.')
+        except Exception:
+            pass
     vars['asks_question'] = 'no'
     vars['neg_turn_done'] = turn
     vars['neg_error'] = str(st.pop('err', '') or '')
@@ -1181,8 +1230,13 @@ except Exception as e:
                 self.nodes[name] = api_node(name, self.api_fn("create_promise", body, [f["amount"], f["date"]], pre=pre),
                                             [tr(okn, "recorded", truthy(var)), tr(fail_to, "not recorded")],
                                             mapping=[{"path": "data." + ok, "variable": var}], say=(self.ph(rec["retry_say"]) if t > 1 else ""))
-            self.nodes[okn] = code_node(okn, codegen.embed({}, f"vars['res_{i}'] = 'promise'\n", snippets=()), [tr(nxt, "always")])
-            self.nodes[failn] = code_node(failn, codegen.embed({}, f"vars['res_{i}'] = 'failed'\n", snippets=()), [tr(nxt, "always")])
+            # the close is known from here on: if the customer hangs up while the notes and the farewell are still on
+            # their way, close_call says "promise", not the opening's default
+            po = self.s["outcomes"]["promise"]
+            self.nodes[okn] = code_node(okn, codegen.embed({"o": po["outcome"], "r": po["reason"]},
+                                                          f"vars['res_{i}'] = 'promise'\nvars['outcome'] = CFG['o']\nvars['reason'] = CFG['r']\n", snippets=()), [tr(nxt, "always")])
+            # the note that follows overwrites res_<i>: rec_failed keeps the fact for the close, so the customer is told
+            self.nodes[failn] = code_node(failn, codegen.embed({}, f"vars['res_{i}'] = 'failed'\nvars['rec_failed'] = 'yes'\n", snippets=()), [tr(nxt, "always")])
         return f"{prefix}_gate_1"
 
     def notes_by_product(self):
@@ -1303,7 +1357,7 @@ try:
             r = str(vars.get('p' + s + '_end_reason') or '') or CFG['exhausted_reason']
         reasons.append(r)
     m = CFG['multi_rule']
-    failed = any(str(vars.get('res_' + str(j))) == 'failed' for j in range(1, n + 1))
+    failed = any(str(vars.get('res_' + str(j))) == 'failed' for j in range(1, n + 1)) or str(vars.get('rec_failed') or '') == 'yes'
     if promised == 0 and failed and not m:
         vars['outcome'] = CFG['fail_outcome']['outcome']
         vars['reason'] = CFG['fail_outcome']['reason']
@@ -1326,16 +1380,39 @@ try:
         vars['reason'] = first or CFG['exhausted_reason']
         vars['farewell'] = CFG['farewell']
     else:
-        vars['outcome'] = CFG['exhausted_outcome']
-        vars['reason'] = CFG['exhausted_reason']
+        hit = None
+        for r in reasons:                        # no closing rule for several products: the first product's own ending decides
+            if r:
+                hit = CFG['by_note'].get(r)
+                break
+        vars['outcome'] = hit['outcome'] if hit else CFG['exhausted_outcome']
+        vars['reason'] = hit['reason'] if hit else CFG['exhausted_reason']
         vars['farewell'] = CFG['farewell']
+    # whatever the close: a promise that could not be saved is said, and so is a sentence the negotiation still owed
+    if failed and promised == 0 and CFG['fail_say'] and CFG['fail_say'] not in vars['farewell']:
+        vars['farewell'] = (CFG['fail_say'] + ' ' + vars['farewell']).strip()
+    owed = str(vars.get('close_say') or '').strip()
+    if owed and owed not in vars['farewell']:
+        vars['farewell'] = (owed + ' ' + vars['farewell']).strip()
 except Exception:
     vars['outcome'] = CFG['exhausted_outcome']
     vars['reason'] = CFG['exhausted_reason']
     vars['farewell'] = CFG['farewell']
 """
         ex = self.s["negotiation"]["attempts_exhausted"]
-        self.nodes["finalize"] = self.code("finalize", body, [tr("final_end", "always")], exhausted_outcome=ex["outcome"], exhausted_reason=ex["reason"],
+        # note reason -> how a call closes when a product ended for it (the situation's own close, the failed
+        # recording's, the used-up attempts'); read only when the SPEC has no closing rule for several products
+        by_note = {}
+        if self.notes:
+            for x in self.s["situations"]:
+                for eff in [x["effect"]] + ([x["offer"]["on_decline"], x["offer"]["on_accept"]] if x.get("offer") else []):
+                    for a in eff["actions"]:
+                        if a["type"] == "note" and a.get("note_reason"):
+                            by_note.setdefault(a["note_reason"], {"outcome": eff["outcome"], "reason": eff["reason"]})
+            for rule in (self.s["recording"]["on_final_failure"], ex):
+                if rule.get("note_reason"):
+                    by_note.setdefault(rule["note_reason"], {"outcome": rule["outcome"], "reason": rule["reason"]})
+        self.nodes["finalize"] = self.code("finalize", body, [tr("final_end", "always")], exhausted_outcome=ex["outcome"], exhausted_reason=ex["reason"], by_note=by_note,
                                             reason_from_state=self.notes and not self.flag("note_exhausted"),
                                             fail_outcome={"outcome": self.s["recording"]["on_final_failure"]["outcome"], "reason": self.s["recording"]["on_final_failure"]["reason"]},
                                             fail_say=self.s["recording"]["failure_say"])

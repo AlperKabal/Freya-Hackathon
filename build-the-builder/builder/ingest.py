@@ -84,8 +84,43 @@ def _office(raw):
     return ""
 
 
+def _docx(raw):
+    """Read paragraphs and tables in document order, including cells in each row."""
+    from docx import Document
+    doc = Document(io.BytesIO(raw))
+    lines = []
+    for block in doc.iter_inner_content():
+        if hasattr(block, "rows"):
+            lines.extend(" | ".join(cell.text.replace("\n", " / ") for cell in row.cells) for row in block.rows)
+        elif block.text.strip():
+            lines.append(block.text)
+    return "\n".join(lines)
+
+
+def _xlsx(raw):
+    """Read every sheet with its name; preserve cells and row boundaries."""
+    from openpyxl import load_workbook
+    workbook = load_workbook(io.BytesIO(raw), read_only=True, data_only=False)
+    lines = []
+    for sheet in workbook.worksheets:
+        lines.append("===== SHEET: " + sheet.title + " =====")
+        for row in sheet.iter_rows(values_only=True):
+            if any(value is not None for value in row):
+                lines.append(" | ".join("" if value is None else str(value) for value in row))
+    workbook.close()
+    return "\n".join(lines)
+
+
 def _pdf(raw):
-    """Best effort: the text operators of a PDF's (deflated) content streams. Good enough for a plain text PDF."""
+    """Extract text page by page; fall back to text operators for odd PDFs."""
+    try:
+        from pypdf import PdfReader
+        pages = [page.extract_text() or "" for page in PdfReader(io.BytesIO(raw)).pages]
+        text = "\n\n".join(pages)
+        if text.strip():
+            return text
+    except Exception:
+        pass
     out = []
     for stream in re.findall(rb"stream\r?\n(.*?)\r?\nendstream", raw, re.S):
         try:
@@ -108,7 +143,11 @@ def read_text(path):
         return "", f"could not be read ({type(e).__name__})"
     try:
         if raw[:2] == b"PK":
-            text = _office(raw)
+            suffix = pathlib.Path(path).suffix.lower()
+            try:
+                text = _docx(raw) if suffix == ".docx" else _xlsx(raw) if suffix == ".xlsx" else _office(raw)
+            except Exception:
+                text = _office(raw)
             return text, "office file read as text" if text.strip() else "office file without readable text"
         if raw[:5] == b"%PDF-":
             text = _pdf(raw)
@@ -204,6 +243,11 @@ def _fields(schema, root, depth=0):
         enum = prop.get("enum") if isinstance(prop.get("enum"), list) else ([prop["const"]] if "const" in prop else [])
         f = {"type": _type(prop), "enum": [e for e in enum if e is not None],
              "description": str(prop.get("description") or ""), "format": str(prop.get("format") or "")}
+        if f["type"] == "object" and depth < 4:
+            nested = _fields(prop, root, depth + 1)
+            if nested:
+                f["properties"] = nested
+                f["required"] = _flat(prop, root)[1]
         items = _resolve(prop.get("items"), root) if f["type"] == "array" else None
         if isinstance(items, dict) and depth < 4:
             sub = _fields(items, root, depth + 1)

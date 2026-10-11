@@ -705,3 +705,91 @@ Known limit: `notes.on_transfer = "add"` has no field for the note's reason; D d
   facility whose attempts ran out gets a note (the brief is ambiguous: D21 says close as declined, D30 says "the
   first note's reason"). Field guide tightened: `for_each_product_without_promise` is true only when the brief says
   so in words; a "first note's reason" closing alone does not.
+
+### Mock briefs merged into `fix-agent-logic`, and what they found (11 October, ~14:00 UTC)
+
+`dev/mock_briefs/` (branch `mock-briefs`, only new files) was merged into `fix-agent-logic` at `54266e9`. It holds
+five briefs we wrote, each bank in both forms the final announces (a consumer bank as raw material and as a clean
+specification, a business bank the same, and the kit's Brief A+B with twelve rules changed on the kit's own API),
+their oracle SPECs, 198 customers with the bank records each brief requires, customers made from any SPEC alone,
+68 one-rule variants of a SPEC, and a walker that plays whole calls through the generated workflow without the
+platform. `dev/mock_briefs/README.md` has the layout and the findings; `python dev/test_mock_briefs.py` runs it all
+in a minute.
+
+Every check of the repository on the merged branch: the 16 existing ones pass. `test_mock_briefs` failed 13 tier-1
+checks, all from four causes, two of them in the Brief A+B agent itself (orch): the "already paid" sentence was
+never said when that product was the last open one, and a promise that could not be saved was never told to the
+customer. The other two are in `snippets/answers.py`: a numbers-only date of birth was read month first with Brief
+A's own format words, and a code said character by character went out as words. All four are fixed in `bb8e28e`,
+with four tier-2 closes (no callback, notes without a closing rule for several products, half a cent, a persuasion
+date on a Sunday). After it: the 16 existing checks pass, `test_mock_briefs` has tier 1: 0, tier 2: 8, tier 3: 12.
+
+Not verified: the Reader on the mock briefs (`python dev/run_mock_briefs.py --extract`, about two minutes of model
+time per pack; this clone has no Claude login) and pack F on the platform (`--simulate`, needs the keys). What is
+still open is listed in the README, by tier.
+
+Second round, same afternoon: an evidence word that only begins a longer word of the agent's own sentences ("person"
+before a product name) is kept as a whole word instead of dropped (`=` marks it; `has_evidence` reads it); one day
+for several products that none of them can have says so and asks for another day instead of using up an attempt.
+A single product's refused day was left as it is: `imaginary-d.md` D13 asks to repeat the open offer, packs D and E
+ask which day suits, and `reject` is one value (listed under "Rules the SPEC cannot say").
+`dev/walk_practice.py` (new) plays the 13 practice customers through the walker and scores the records with
+`tools/score.py`: 13 of 13 on the reference SPECs, in two seconds. It checks what code decides, not the conversation.
+
+### Platform runs after the merge (11 October, ~14:30-15:20 UTC), slot `yasar-exp-date`, agents from the reference SPECs
+
+Run from a second machine. Python there needs `export SSL_CERT_FILE=/etc/ssl/cert.pem` (a python.org build without
+its certificates); the slot's workflow id was read from the workflow list and written to `.freya-agents.json`, so
+nothing new was created in the workspace. Results in `results/check-*.json` (not committed).
+
+| Agent (code) | What | Result | Failed | Cause |
+|---|---|---|---|---|
+| A, orch (`b36ee71`) | Brief A, 1 run | 8/10 | PUB-06, PUB-08 | PUB-08: "analysis never arrived" (the call itself was right). PUB-06: see below |
+| same | PUB-06 and PUB-08, 3 runs | PUB-08 3/3, PUB-06 1/3 | PUB-06 | one call ended with no promise at all |
+| A, orch (`e1536cf`) | PUB-06, 3 runs | 3/3 | - | |
+| same | Brief A, 1 run | **10/10** | - | |
+| A+B, orch (`e1536cf`) | Brief B, 1 run | **3/3** | - | |
+| same | RULE-B-both-paid, RULE-B-paid-and-refused, RULE-B-dispute-one | 2/3 | RULE-B-dispute-one | see below |
+
+- **PUB-06, the cause that four calls share.** The floor was offered as a bare number ("Can you pay 637.50 for your
+  credit card ending 1903 on Wednesday 14 October 2026? The rest stays overdue."). The customer's script waits for
+  "the minimum payment" and did not take the number for it: she answered "You tell me", "How much is the minimum
+  payment?" or "I can't pay that much", which cost a persuasion attempt and a second mention of the floor (the judge
+  counts it), and once the whole promise: the answering step named the full amount and "that payment" then read as
+  it. Fix (`e1536cf`): an offer of a product's lowest amount names it with the words of its field ("the minimum
+  payment of 637.50", "the instalment amount of 700.00"), when those words end as a thing one can pay; and the
+  answering step is told what is on the table. In all three runs after it the customer said "I can do the minimum
+  payment this Friday" at once.
+- **The "already paid" sentence at the close** (fixed in `bb8e28e`) is confirmed by the judge: RULE-B-both-paid and
+  RULE-B-paid-and-refused pass on the A+B agent.
+- **RULE-B-dispute-one: the dispute went to the wrong product.** "The credit card debt is not mine because I never
+  had that card. I cannot pay the loans today." was classified as a dispute, and `about_text` came back as "the
+  loans" (the last product named), so the personal loan was noted as disputed and the card was then asked for. Fix:
+  the product extraction is told that a message which says one of the SPEC's product-scope situations about a
+  product names THAT product, also when it goes on to others; and a plural of a word several product names share
+  ("the loans") means each of those products for a situation.
+- **The close is known as soon as a promise is recorded**: `rec_ok_<i>` now writes the promise outcome. In one slow
+  call both promises were recorded, the customer hung up while the notes were on their way, and `close_call` went out
+  with the opening's default (`not_reached` / `unclear`). Not yet run on the platform (see below).
+- **The platform stopped answering at about 15:14 UTC.** Every call hangs after the customer's first reply (no
+  extraction event at all) and the customer hangs up after 60 seconds; `yasar-tune-a`, which passed earlier, fails
+  the same way. Runs from then on say nothing about the agent.
+- **What a slow platform shows about our agent.** A customer waits about 60 seconds. After "Yes, I confirm" a
+  three-product call runs about 15 sandbox executions (the negotiation step, then per product a gate, the promise
+  hook and a node that marks it, then a gate per note, the close and the farewell). At 1 to 2 seconds each that is
+  the "slowest agent turn" of 9 to 16 seconds the runs report; at 7 seconds each (measured in one call) it is more
+  than a customer waits. Fewer nodes at the end of the call is the open work with the most value; it needs the
+  platform to be tested.
+- For the next session: `dev/HANDOFF_NEXT.md`; `dev/attach_slot.py` points a fresh clone's slot at an existing
+  workflow so no new one is created.
+- **After the outage (16:00 UTC, agent from `609c66d`)**: Freya confirmed the stall was a bug on their side. Brief B,
+  one run: PUB-11 and PUB-12 pass; PUB-13 was played twice by the platform against one bank session, so the bank
+  refused the card's promise the second time ("this product already has a promise") and the agent, rightly, retried,
+  noted `service_error` and said so. RULE-B-dispute-one, RULE-B-both-paid and RULE-B-paid-and-refused: 3/3 with the
+  judge, which confirms the product extraction fix and the early close. A call in this run took 30 seconds, turns
+  about 2 seconds.
+- **Three runs each, 16:04-16:15 UTC, agents from the reference SPECs at `609c66d` (mode orch)**: Brief B 3/3 in
+  every run (PUB-11, PUB-12, PUB-13 each 3 of 3); Brief A 10/10 in every run (every customer 3 of 3, PUB-06
+  included). No customer hung up. Slowest agent turn per call: Brief A median 4 to 7 s (worst 10 to 15 s), Brief B
+  median 14 to 17 s (worst 20 to 21 s): with three products the end of the call is the slow turn, as written above.
+
