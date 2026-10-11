@@ -396,6 +396,7 @@ check("a 400 or 404 is a refusal; a 5xx, a 401 in an outage, a 429 or a timeout 
       tuple(build.transient(e) for e in (RuntimeError("POST /x -> 400: bad"), RuntimeError("PUT /x -> 404: no such workflow"), RuntimeError("GET /x -> 502: x"),
                                          RuntimeError('POST /x -> 401: {"message":"invalid JWT"}'), RuntimeError("POST /x -> 429: slow down"), TimeoutError("t"))),
       (False, False, True, True, True, True))
+check("a workspace plan limit is not waited out", build.transient(RuntimeError('POST /api/v2/workflow -> 403: {"message":"Workspace plan limit reached. M'})), False)
 
 # the official run command: no --slot, no --mode, paths from the repository root while the kit folder is the cwd
 code, fr, log, out = run_build(["briefs/brief-a.md", "build-the-builder/tools/openapi.json", "--spec", str(KIT / "dev/specs/brief-a.json")])

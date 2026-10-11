@@ -37,6 +37,8 @@ def transient(e):
     (5xx, 401/403 during an outage, 408, 429, a timeout or a lost connection) is tried again."""
     if isinstance(e, OSError):                           # URLError, socket timeout, connection reset
         return True
+    if re.search(r"plan limit", str(e), re.I):           # "Workspace plan limit reached" (403): waiting does not help
+        return False
     m = re.search(r"-> (\d{3})\b", str(e))
     return bool(m) and m.group(1) not in ("400", "404", "409", "413", "422")
 
