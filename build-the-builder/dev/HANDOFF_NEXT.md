@@ -1,3 +1,39 @@
+# THE FINAL CASE (opened 17:00 UTC, closes 20:00 UTC = 23:00 Istanbul): read this first
+
+The final is not a collections call. `BRIEF.md` (in the pack; a copy is in `build-the-builder/`, untracked) says: a
+customer calls about their credit card statement debt, in Turkish; the services are other ones; **we write our own
+mock of the bank's services on Cloudflare Workers**; the builder runs on the pack's folder with the mock's address.
+The SPEC pipeline cannot hold this call, so the builder has a second way (`builder/casework.py`, generic, no case
+content): the Reader writes the call's script from all documents, and the agent is one conversation step with every
+service as a tool. Tried offline only (`--design`); the Reader call and the platform were NOT run on the real pack.
+
+    python3 builder/build.py <case_folder> <mock_url> --slot yasar-exp-date 2>&1 | tee traces/final.log
+
+It reads every document under the folder, takes the services from an OpenAPI file in the folder or from
+`<mock_url>/openapi.json`, calls them at `<mock_url>`, writes `out/<slot>.design.json` (the script), saves, publishes
+and exports (`out/<slot>.export.json`). `--design out/<slot>.design.json` repeats a build without the model.
+
+What is left, in order (only BRIEF.md and the flow drawing had reached this machine when the session ended):
+
+1. Get the whole pack. Read `README.md`, the integration document (section 6), `test-environment/`, `cloudflare-mock/`.
+2. The mock: `final-mock/` is a skeleton (or use the pack's `cloudflare-mock/` example). Fill `src/index.js` routes with
+   the bank's paths, fields and shapes; `src/data.json` with the test customers' answers, HTTP status included;
+   `src/openapi.json` with the same services (one path per service, request and response fields), so the builder
+   can read them. Then `cd final-mock && npx wrangler login && npx wrangler deploy`; note the workers.dev address.
+   Check every test customer with curl against the answers in the pack. The mock stays up until the results are out.
+3. `source env.sh; export SSL_CERT_FILE=/etc/ssl/cert.pem` (this Mac); `python3 dev/attach_slot.py yasar-exp-date`;
+   `pip install claude-agent-sdk` is done here and the Claude login works (`python3 dev/check_claude_login.py`).
+4. Run the builder (command above). Read `out/yasar-exp-date.design.json`: is the script right against the documents?
+   A wrong script is fixed in the Reader's general instructions (`READER_SYSTEM`), never by writing the case into
+   `builder/`, and never by editing the workflow by hand.
+5. Try the agent: the pack's `example-scenarios.md` has six conversations; personas can be made with
+   `freya.create_personas` and run with `freya.run_simulation(agent_id, name, {persona_id: {<the call's variables>}})`.
+6. Submit before 20:00 UTC: copy the export to `submission/final.workflow.json` and the trace to `traces/final.log`
+   (remove keys), write `submission.json` (team, members, repo, commit, run_command, workflow, trace, mock_url; the
+   shape is in BRIEF.md), commit and push, then e-mail the three files to the address in BRIEF.md. Yaşar sends it.
+
+---
+
 # Handoff: `fix-agent-logic` on Sunday 11 October 2026, 15:35 UTC (18:35 TR)
 
 For whoever continues: another agent session, on another machine or in the cloud. Read this, then `dev/JOURNAL.md`
