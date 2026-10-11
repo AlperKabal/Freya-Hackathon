@@ -689,3 +689,19 @@ Tests: `dev/test_generalize.py` (new, by rule family); D added to test_propertie
 test_tuning, test_situation_guard, test_spec_schema, test_robust. Two properties were Brief-A-shaped and are now read
 from the SPEC (a day is checked against the SPEC's earliest day, not today; a read-back per promise).
 Known limit: `notes.on_transfer = "add"` has no field for the note's reason; D does not use it.
+
+### Generalisation round 2: the customer's language, and the Reader on a brief it never saw
+
+- `dev/test_language.py` (new): random amounts and days said the way people say them (digits, words, cents,
+  currency words, "the 16th", "Saturday the 28th", "16/10", "in twenty-seven days", fillers, self-corrections),
+  thousands per run, the expected value worked out with datetime. Amounts: all pass. Days, two fixes in
+  `snippets/dates.py`: a weekday with a day number and no month ("Saturday the 28th") now names the month (the next
+  28th that is a Saturday; it took the next 28th of any weekday); "in twenty-seven days" (a hyphen) was not read.
+- **The Reader on imaginary-d, twice** (`--no-save`, 270 s each): both SPECs valid, both workflows pass every local
+  check in both modes. Every field that decides behaviour (calendar, the three bands' deadlines and ladders, the
+  earliest day, the refuse modes, the vague rule, the amounts, the call's attempt limit, the multi-product flags,
+  recording, identity, outcomes) is identical in both and equal to the reference. The Reader also found D4 (not the
+  member) that the hand-written reference had missed. The one field that differed between the two runs: whether a
+  facility whose attempts ran out gets a note (the brief is ambiguous: D21 says close as declined, D30 says "the
+  first note's reason"). Field guide tightened: `for_each_product_without_promise` is true only when the brief says
+  so in words; a "first note's reason" closing alone does not.

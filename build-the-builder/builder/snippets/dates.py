@@ -166,13 +166,14 @@ def _month_index(name):
     return None
 
 
-def _future_day_of_month(today, day):
-    """The next date (today or later) with this day of the month."""
+def _future_day_of_month(today, day, weekday=None):
+    """The next date (today or later) with this day of the month; with a weekday ("Saturday the 28th") the next one
+    on that weekday, so the weekday tells the month."""
     y, m = today.year, today.month
-    for _ in range(13):
+    for _ in range(13 if weekday is None else 30):
         try:
             d = _dt.date(y, m, day)
-            if d >= today:
+            if d >= today and (weekday is None or d.weekday() == weekday):
                 return d
         except ValueError:
             pass
@@ -227,7 +228,7 @@ def _resolve(t, today, cfg):
             return {"status": "exact", "date": (today + _dt.timedelta(days=1)).isoformat()}
         if _re.search(r"\b(today|tonight|this (morning|afternoon|evening)|right now|now)\b", t):
             return {"status": "exact", "date": today.isoformat()}
-        m = _re.search(r"\bin (\w+(?: \w+)?) days?\b", t)
+        m = _re.search(r"\bin ([\w-]+(?: [\w-]+)?) days?\b", t)          # "in five days", "in twenty-seven days"
         if m and words_to_number(m.group(1)) is not None:
             return {"status": "exact", "date": (today + _dt.timedelta(days=words_to_number(m.group(1)))).isoformat()}
         # a day of the month, with or without a month name: "26 october", "october 26th", "the 26th", "monday the 26th"
@@ -254,7 +255,10 @@ def _resolve(t, today, cfg):
             return {"status": "exact", "date": d.isoformat()}
         m = _re.search(r"\bthe " + _ORDNUM + r"\b", t) or _re.search(r"\bon (\d{1,2}(?:st|nd|rd|th))\b", t)
         if m and words_to_number(m.group(1)):
-            d = _future_day_of_month(today, words_to_number(m.group(1)))
+            wd = _re.search(r"\b(" + "|".join(WEEKDAYS) + r")(?: the)? " + _re.escape(m.group(1)) + r"\b", t)
+            d = _future_day_of_month(today, words_to_number(m.group(1)), WEEKDAYS.index(wd.group(1)) if wd else None)
+            if d is None and wd:                                  # no such weekday on that day in the coming months
+                d = _future_day_of_month(today, words_to_number(m.group(1)))
             if d:
                 return {"status": "exact", "date": d.isoformat()}
         # a weekday, with this / next / plain
