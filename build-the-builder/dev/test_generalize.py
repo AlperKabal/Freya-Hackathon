@@ -114,7 +114,7 @@ c = Call(C, C_TOOLS, [C_LOAN], mode="orch")
 c.say("too_much", "Too much.")
 first = c.v["say_text"]
 c.say("too_much", "Still too much.")
-check("C (no too-much sentence): the floor is offered once; 'too much' again is a refusal, not the same offer again", (first.startswith("Can you pay 1200.00"), c.v["say_text"] != first), (True, True))
+check("C (no too-much sentence): the floor is offered once; 'too much' again is a refusal, not the same offer again", (first.startswith("Can you pay the minimum due of 1200.00"), c.v["say_text"] != first), (True, True))
 
 # ---------------------------------------------------------------- attempts for the whole call, a read-back per promise
 c = d_call([MORT, LINE, STUD])

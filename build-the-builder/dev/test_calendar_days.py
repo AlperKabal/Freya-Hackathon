@@ -65,6 +65,8 @@ def money(x): return "%.2f" % x
 
 for band in ("early", "late"):
     full, floor, name = PRODUCT[band]["past_due"], FLOOR[band], NAME[band]
+    # the lowest amount is offered by its own name: the words of the field the brief puts it in (rule 25)
+    floor_words = "minimum payment" if "minimum_payment" in PRODUCT[band] else "instalment amount"
     bad = {k: [] for k in ("a1", "refuse", "late_date", "too_much", "holiday", "today")}
     for day in WORK:
         dl, a1 = DEADLINE[band](day), min(attempt_1(day), DEADLINE[band](day))
@@ -81,7 +83,7 @@ for band in ("early", "late"):
         for _ in range(ATTEMPTS[band] + 1):
             c.say("refuse", "No.")
             offers.append(c.v["say_text"])
-        want2 = f"Can you pay {money(floor)} for your {name} on {spoken(dl)}? The rest stays overdue."
+        want2 = f"Can you pay the {floor_words} of {money(floor)} for your {name} on {spoken(dl)}? The rest stays overdue."
         if (c.node, c.promises(), c.closed()) != ("final_end", [], ("no_promise", "refused")) or (band == "late" and offers[1] != want2):
             bad["refuse"].append((day.isoformat(), c.node, offers[-2:], c.closed()))
         # a date after the deadline: the deadline is offered, then recorded (rule 23)
@@ -98,7 +100,7 @@ for band in ("early", "late"):
         c.say("refuse", "You tell me.")
         second = c.v["say_text"]
         c.say("accept", "OK."); c.say("accept", "Yes, I confirm.")
-        if (first, second, c.promises()) != (f"Can you pay {money(floor)} for your {name} on {spoken(day)}? The rest stays overdue.",
+        if (first, second, c.promises()) != (f"Can you pay the {floor_words} of {money(floor)} for your {name} on {spoken(day)}? The rest stays overdue.",
                                                f"Could you make that payment for your {name} on {spoken(a1)}?", [("p1", floor, a1.isoformat())]):
             bad["too_much"].append((day.isoformat(), first, second, c.promises()))
         # a weekend day or a holiday inside the deadline: the next business day is offered (rule 20)

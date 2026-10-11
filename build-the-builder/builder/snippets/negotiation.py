@@ -209,7 +209,12 @@ def _offer_text(pp, x, cfg, new_floor=False):
     named = x.get("named_amt")
     if amt < pp["full"] and not new_floor and named is not None and abs(amt - named) < 0.005:
         return "Could you make that payment for your " + pp["name"] + " on " + _day(pp, x["offer_date"]) + "?"
-    s = "Can you pay " + money(amt) + " for your " + pp["name"] + " on " + _day(pp, x["offer_date"]) + "?"
+    what = money(amt)
+    if pp.get("floor_name") and amt < pp["full"] and abs(amt - pp["floor"]) < 0.005:
+        # the product's lowest amount is named by its own words ("the minimum payment of 637.50"): a customer who
+        # waits to hear them does not know that a bare number is it
+        what = "the " + pp["floor_name"] + " of " + money(amt)
+    s = "Can you pay " + what + " for your " + pp["name"] + " on " + _day(pp, x["offer_date"]) + "?"
     if amt < pp["full"] and cfg.get("too_much_say"):
         s += " " + cfg["too_much_say"]
         x["named_amt"] = amt

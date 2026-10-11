@@ -666,6 +666,9 @@ def _fill(template, values):
     return _re.sub(r'[{]([a-zA-Z_][a-zA-Z0-9_]*)[}]', lambda m: str(values.get(m.group(1), '')), template)
 def _money(x):
     return '%.2f' % float(x)
+# a lowest amount is named by its field's own words only when they end as a thing one can pay ("minimum payment",
+# "instalment amount", "lease rental"); other field names ("monthly", "floor") are no words for a customer
+NOUNS = ('payment', 'repayment', 'amount', 'instalment', 'installment', 'due', 'rate', 'rental', 'fee', 'sum', 'minimum', 'contribution', 'premium')
 def _amount(rule, full, floor):
     k = rule.get('kind')
     if k == 'floor':
@@ -689,7 +692,7 @@ try:
             full = float(p.get(pf['past_due']))
             days = int(float(p.get(pf['days_late'])))
             floor = float(p.get(typ['floor_field'])) if typ and p.get(typ['floor_field']) is not None else full
-            floor_name = typ['floor_field'].replace('_', ' ') if typ else 'minimum amount'
+            floor_name = _re.sub('(?<![a-z])min(?![a-z])', 'minimum', typ['floor_field'].replace('_', ' ')) if typ else 'minimum amount'
             name = _fill(typ['spoken_name'], p) if typ else str(p.get(pf['type'])).replace('_', ' ')
             band = band_for(days, CFG)
             deadline = deadline_for(band, today, CFG) if band else None
@@ -749,7 +752,8 @@ try:
                               + spoken(first_day) + ' (' + first_day.isoformat() + ') instead.')
             plan.append(dict(name=name, full=round(full, 2), floor=round(min(floor, full), 2), today=today.isoformat(), first_day=first_day.isoformat(), ask_day=ask_day.isoformat(), statement=intro[-1],
                              first=am['first_offer'], lo=min(am['accept_min'], am['accept_max']), hi=am['accept_max'], tm=am['too_much'], bm=am['below_min'],
-                             deadline=deadline.isoformat() if deadline else '', ladder=lad, spoken=spoken_days))
+                             deadline=deadline.isoformat() if deadline else '', ladder=lad, spoken=spoken_days,
+                             floor_name=floor_name if typ and typ['floor_field'] != pf['past_due'] and floor_name.split()[-1] in NOUNS else ''))
         # A short calendar: weekdays and deadlines only. Named days are checked by the date_check code node,
         # so the model never needs to apply the date rules to this list itself (and a short prompt is a fast turn).
         last = max([dd for (dd, n, name) in dls if dd] or [today])
@@ -1150,6 +1154,16 @@ try:
             elif nxt == 'talk' and say and str(vars.get('asks_question') or '') == 'yes':
                 # a refusal (or an answer) with a question in it: the turn is decided as usual, the question is answered too
                 nxt, instr = 'ask', 'Answer the customer question in one short sentence, using only the facts given.'
+    if nxt == 'ask':
+        try:                                     # what is on the table, as a fact for the answer (never a new offer)
+            cx, cp = st['p'][st['cursor']], plan[st['cursor']]
+            if cx['status'] == 'open' and st.get('phase') != 'confirm':
+                fn = str(cp.get('floor_name') or '')
+                low = bool(fn) and cx['offer_amt'] < cp['full'] and abs(cx['offer_amt'] - cp['floor']) < 0.005
+                instr += (' The offer that is open is ' + ('%.2f' % float(cx['offer_amt'])) + (' (the ' + fn + ')' if low else '') + ' for the ' + cp['name']
+                          + ' on ' + str(cp['spoken'].get(cx['offer_date'], cx['offer_date'])) + ', and the full amount is ' + ('%.2f' % float(cp['full'])) + '.')
+        except Exception:
+            pass
     vars['asks_question'] = 'no'
     vars['neg_turn_done'] = turn
     vars['neg_error'] = str(st.pop('err', '') or '')
