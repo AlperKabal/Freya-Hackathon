@@ -18,8 +18,15 @@ You are taking over a hackathon builder from another agent. Read, in this order:
   -> export -> trace in `traces/`. Outputs in `out/<slot>.*` (spec, audit, workflow, export).
 - `--mode v1`: one LLM negotiation node (proven). `--mode orch`: state machine `builder/snippets/negotiation.py`
   decides offers, TTS says them, engine-run `create_promise`; model only answers questions (`negotiate_q`).
-- Checks: `python dev/test_spec_schema.py`, `dev/test_dates.py`, `dev/test_not_today.py`, `dev/test_negotiation.py`,
-  `dev/test_situation_guard.py`, `dev/check_no_brief_literals.py`.
+- Checks (no key, no model): `python dev/test_spec_schema.py`, `dev/test_dates.py`, `dev/test_not_today.py`,
+  `dev/test_negotiation.py`, `dev/test_situation_guard.py`, `dev/test_answers.py`, `dev/test_robust.py`,
+  `dev/test_calendar_days.py`, `dev/test_properties.py`, `dev/test_scenarios.py`, `dev/test_mutations.py`,
+  `dev/test_generate.py` (about 2 minutes), `dev/check_no_brief_literals.py`.
+- Beyond the practice set (need keys; Brief A/B agents only): `dev/run_scenarios.py` (our own customers on other
+  calendar days, expected records from `dev/expect.py`), `dev/run_styles.py` (the five speaking styles),
+  `dev/mutate_brief.py --run` (changed copies of Brief A through the extractor; needs the Claude login).
+- A build always ends with an agent (fallback ladder in `builder/build.py`, `robust.py`, `minimal.py`): a trace
+  status other than plain `ok` names the fallback that was used.
 - Debug a run: `python dev/show_call.py results/<run>.json PUB-xx > results/x.txt` (speech, nodes, tools, variable changes).
 
 ## Scores (practice cases; SPECs extracted by the builder itself)

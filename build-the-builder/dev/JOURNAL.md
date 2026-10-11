@@ -468,3 +468,107 @@ Both branches fixed some of the same problems in different ways; conflicts were 
 - Checks after the merge: test_spec_schema 3, test_dates 135, test_not_today 14, test_negotiation 62,
   test_situation_guard 124, test_generate 158 checks, all pass; literal check clean; the extracted A, A+B, raw-A and
   the reference SPECs lint and run their snippets clean in both modes.
+
+### Optimisation round on `fix-agent-logic` (2026-10-11): a build that cannot fail, other days, our own customers
+
+Seven points from the advisor's list. None of it was run on the platform: this clone has no keys and no Claude
+login, so everything below is checked offline (no model, no simulation). What must still be run with keys is at the
+end.
+
+**1. A build always ends with an agent** (`build.py`, `robust.py`, `minimal.py`, `llm.py`, `ingest.py`, `extract.py`).
+- Each step has a way down: tolerant file reading (encodings, `.docx`/`.xlsx`/`.pdf` as text, Swagger 2 and
+  `allOf`/`$ref` shapes); every model call has a time limit, one retry and a second model; a SPEC with problems is
+  repaired by rule (`robust.coerce`) and what the format cannot hold becomes a free rule `builder-N`; the first agent
+  that passes is saved before the Auditor runs, and the audited agent replaces it only when it builds as well; both
+  modes are generated and a platform refusal moves to the next; with no usable SPEC `minimal.build` saves an agent
+  that reads the documents itself.
+- The trace status says which path was taken (`ok`, `ok (mode ...)`, `..., SPEC repaired by rule`,
+  `ok (last resort)`). `BUILD_BUDGET_S` (1500), `BUILDER_CALL_TIMEOUT_S` (480), `BUILDER_MODEL_FALLBACK`.
+- `dev/test_robust.py`, 108 checks with inputs and model calls that fail on purpose.
+
+**2. Identity answers by type, not by field name** (`snippets/answers.py`, the verify tool's pre-hook).
+- The SPEC's `value_type` decides the form: a date as the API asks, a year in four digits, a digit string without
+  spaces even when said in parts or in words, a code in upper case without spaces. An answer already in the right
+  form is unchanged; one the code is not sure about goes out as the model wrote it. `dev/test_answers.py`, 62 checks.
+
+**3. Sentences read against a literal judge** (`sentences.py`, run before every save, findings in the trace).
+- Forbidden words before identity, words that read as "it was saved" before a save, a placeholder said aloud, one
+  of the brief's exact sentences that no fixed line says. The Reworder now also covers the amount sentences, the
+  failure sentence and situation sentences.
+- Found in our own fixtures: the below-minimum sentence said "cannot be recorded". The reference SPECs now say
+  "I am not able to accept that amount."
+- A sentence that code writes into a spoken variable is said as it stands, so a call variable inside it was spoken
+  as a brace: code nodes now fill the call's variables in (`_say`), and a step before the end node (`say_farewell`)
+  does it for every farewell.
+
+**4. Other calendar days and unscripted customers, offline** (`dev/test_calendar_days.py`, `dev/test_properties.py`,
+`dev/walk.py`, `dev/expect.py`).
+- The generated agent is walked on every day of three months (61 business days, 31 weekend days and holidays), with
+  the expected dates worked out from the brief's own text by a plain calendar (`dev/expect.py`), not by the builder's
+  date code; and 7200 random conversations are checked against rules that must always hold (amount inside the
+  range, date a business day up to the deadline, full amount first, attempts within the band, read-back equal to
+  what is recorded).
+- Four bugs found and fixed in the state machine: a call on a weekend day or a holiday recorded "yes, today" on
+  that day; one non-business day named for all products moved only the first; an amount waiting for its day leaked
+  to the next product or survived a new offer; at the read-back a proposal naming another product changed the
+  promise being read back.
+- v1 gets the same fact in its FACTS: "TODAY IS NOT A DAY A PROMISE CAN HAVE ... offer <next business day>".
+
+**5. Our own customers for the platform** (`dev/scenarios.py`, `dev/run_scenarios.py`, `dev/test_scenarios.py`).
+- 77 scenarios (58 Brief A, 19 Brief B) on the practice customers' accounts: seven Brief A and three Brief B
+  conversations on five other days (a Friday, a Friday before a Monday holiday, the eve of a mid-week holiday, the
+  month's last business day, 24 December), the callback window with the clock at 18:30, the rules no practice
+  customer tests (unclear, wrong number, deceased, no callback, month as a word, declining, human before and after
+  identity, dispute, scam question, below the floor, change at and after the read-back, hardship accepted, vague
+  twice, not talking, Brief B closing rules), and the replies that only look like a restructuring request.
+- The mock records any date, so only `now` is replaced in the session's variables. Scored like the kit's runner
+  (ledger equal, judge's checks). More than 15 scenarios need `--all` and run as simulations of 12.
+- Every expectation is checked twice without the platform: against the brief's rules (closing table, business day
+  up to the deadline, floor to full amount, one record per product), and by playing the scenario through the
+  generated orchestrated agent (`dev/walk.py`) and scoring its bank calls with the kit's scorer: 58 of the 58
+  scenarios that reach the negotiation and all 12 callback scenarios leave exactly the expected records. The other
+  seven end before the account step or in a model-driven step.
+- That cross-check found one agent fault: "I paid both" noted only the product being discussed and then asked for
+  the next one. A product situation now applies to every open product the customer means ("both", "all of them",
+  "both loans"); one named product stays one product; an agreed promise is not undone (`_meant`,
+  `dev/test_negotiation.py` 67 checks).
+- Also added: a callback "in an hour" / "in half an hour" / "in 45 minutes" is a day and a time counted from `now`
+  (`relative_time` in `snippets/dates.py`, used by the callback check; the extraction's example list names it).
+
+**6. Speaking styles** (`dev/run_styles.py`): the kit's runner once per style (pieces, corrects, talkative,
+asks_back, in_words), then a customer x style table from the result files.
+
+**7. Does the builder read a changed brief?** (`dev/mutate_brief.py`, `dev/test_mutations.py`).
+- 16 copies of Brief A, each with one change (holiday added or removed, band limit moved, a third band, an outcome
+  renamed in brief and API, six-day week, deadline in calendar days, a new situation with its own queue, a memo
+  that overrides two rules, another identity question, two attempts in the early band, first ask reworded, callback
+  window moved, two wrong answers, two retries, vague asked twice). `--run` extracts each (model calls: Claude
+  login needed) and reports READ / MISSED / NOISY against a baseline extraction.
+- Without a model, the generator's half is tested: the SPEC with each change made by hand builds clean in both
+  modes and the walked agent follows it (29 checks). No change needed a generator fix.
+
+**Tie-breakers.** The full amount is asked first on every path and the floor comes only after "too much" or as the
+band's own second attempt (property test). The builder runs no simulation: build time is extraction plus about
+ten seconds.
+
+**Checks after this round**: test_spec_schema, test_dates 155, test_not_today 14, test_negotiation 67,
+test_situation_guard 124, test_answers 62, test_robust 108, test_calendar_days 35, test_properties 13,
+test_scenarios 24, test_mutations 29, test_generate 158: all pass; literal check clean. For the reference SPECs
+the generated workflows differ from `df57913` only in: one new code node (`say_farewell`), the identity pre-hook,
+and the code of `setup`, `prepare_deal`, `finalize`, `check_callback`, `neg_eval` (orch) / `date_check` (v1), plus
+one example added to the callback extraction text. System prompt, node prompts, transitions and tool definitions
+are the same.
+
+**Not verified on the platform** (run these first, in this order, one simulation at a time):
+1. A fresh build of A and A+B in both modes without `--spec` (the Reader must fill `evidence_words` and
+   `value_type`; old extracted SPECs lack them, which only turns the new guards off). Read the trace: status,
+   `sentence` lines, `fallback` lines.
+2. `python tools/run_cases.py <agent> --brief A` and `--brief B` on the new agents: the extra hop through
+   `say_farewell`, the identity pre-hook and `said_text` must not cost a practice customer.
+3. `python dev/run_scenarios.py <agent> --brief A --grep look` (the reply that started this work), then
+   `--grep cal-fri` and `--grep rule`. A failed scenario is our reading against the agent: read the call first.
+4. `python dev/run_styles.py <agent> --brief A --plain`.
+5. `python dev/mutate_brief.py --run --only six_day_week,third_band,memo_overrides_two_rules` when the Claude quota
+   allows, then the rest.
+6. The last resort has never spoken on the platform: `BUILD_BUDGET_S=1 python builder/build.py briefs/brief-a.md
+   tools/openapi.json --slot yasar-exp-minimal` builds it on purpose; run the practice customers on it once.
