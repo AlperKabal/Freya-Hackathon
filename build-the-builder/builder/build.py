@@ -139,11 +139,12 @@ def case_main(a):
     import urllib.parse, urllib.request
     from builder import casework
     t0 = time.time()
-    url = next((str(f) for f in a.files if re.match(r"https?://", str(f))), "").rstrip("/")
+    url = next((str(f) for f in a.files if re.match(r"https?://", str(f))), os.environ.get("FREYA_MOCK_URL", "")).rstrip("/")
     paths = [pathlib.Path(resolve_path(f)) for f in a.files if not re.match(r"https?://", str(f))]
     files = []
     for p in paths:
-        found = [p] if p.is_file() else sorted(x for x in p.rglob("*") if x.is_file()) if p.is_dir() else []
+        found = [p] if p.is_file() else sorted((x for x in p.rglob("*") if x.is_file()),
+            key=lambda x: (0 if x.parent == p and x.name.lower() == "brief.md" else 1, str(x).lower())) if p.is_dir() else []
         files += [str(x) for x in found if x.suffix.lower() not in SKIP and not any(part.startswith(".") or part == "node_modules" for part in x.parts)]
     a.slot = a.slot or default_slot([str(p) for p in paths] or ["case"])
     t = Trace(KIT / "traces", a.slot)
@@ -152,17 +153,31 @@ def case_main(a):
         out.mkdir(parents=True, exist_ok=True)
         apis = [f for f in files if ingest.looks_like_api(f)]
         root = ingest.load_api(apis[-1]) if apis else None
-        if root is None and url:
+        docs = [d for d in ingest.read_briefs([f for f in files if f not in apis]) if d["text"].strip()]
+        if root is None and not url:
+            raise ValueError("a service-contract folder needs the mock URL as an argument or FREYA_MOCK_URL")
+        tools = ingest.parse_api(root)["tools"] if root else {}
+        tool_source = f"local API file {apis[-1]}" if root else "service contract"
+        if not tools and docs:
+            try:
+                llm.set_deadline(t0 + BUDGET * 0.35)
+                extracted = llm.run(casework.read_contract(docs, t))
+                (out / f"{a.slot}.contract.json").write_text(json.dumps(extracted, indent=1, ensure_ascii=False), encoding="utf-8")
+                tools = casework.contract_tools(extracted, url)
+                t.event("ingest", f"contract extraction: {len(tools)} operation(s) from documents")
+            except Exception as e:
+                t.event("warning", f"contract extraction failed ({type(e).__name__}: {str(e)[:180]})")
+        if not tools and url:  # optional discovery only when the contract is unreadable
             req = urllib.request.Request(url + "/openapi.json", headers={"User-Agent": "Mozilla/5.0 (build-the-builder)"})
             root = json.loads(urllib.request.urlopen(req, timeout=30).read().decode("utf-8"))
-        tools = ingest.parse_api(root)["tools"] if root else {}
+            tools = ingest.parse_api(root)["tools"] if root else {}
+            tool_source = "mock API discovery fallback"
         if url:                                          # the services are called where the caller says they are
             base = ingest._base_url(root) if root else ""
             for tool in tools.values():
                 tool["url"] = url + (tool["url"][len(base):] if base and tool["url"].startswith(base) else urllib.parse.urlparse(tool["url"]).path)
-        docs = [d for d in ingest.read_briefs([f for f in files if f not in apis]) if d["text"].strip()]
         t.event("input", f"case: {len(docs)} document(s), {sum(len(d['text']) for d in docs)} chars, from {[str(p) for p in paths]}; services at {url or 'the tool API file'}")
-        t.event("ingest", f"services: {', '.join(sorted(tools)) or 'none'}" + (f" (from {apis[-1]})" if apis else " (from the address's openapi.json)" if root else ""))
+        t.event("ingest", f"services: {', '.join(sorted(tools)) or 'none'} (from {tool_source})")
         if a.design:
             design = casework.clean(json.loads(pathlib.Path(a.design).read_text(encoding="utf-8")))
             t.event("spec", f"script from file {a.design} (no model call)")

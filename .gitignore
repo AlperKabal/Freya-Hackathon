@@ -19,3 +19,6 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+
+# Local Cloudflare build cache
+.wrangler/
