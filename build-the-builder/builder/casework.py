@@ -474,8 +474,11 @@ try:
         if isinstance(_p, dict) and isinstance(_p.get('say'), dict):
             # an ending's closing words are spoken by its ending step: a prepared sentence does not carry them too
             _closing = json.loads(bytes.fromhex('HEXCLOSINGS').decode('utf-8'))
+            _full_units = json.loads(bytes.fromhex('HEXUNITS').decode('utf-8'))
             for _name in list(_p['say'].keys()):
                 _text = str(_p['say'][_name]).strip()
+                for _short, _full in _full_units.items():
+                    _text = re.sub(r'(?<!\\w)' + re.escape(_short) + r'(?!\\w)', _full, _text, flags=re.I)
                 for _c in _closing:
                     if _c and _text.endswith(_c):
                         _text = _text[:len(_text) - len(_c)].strip()
@@ -516,7 +519,7 @@ except Exception:
 """
 
 
-def _tool(name, spec, variables, speech=None, service=None, closings=()):
+def _tool(name, spec, variables, speech=None, service=None, closings=(), full_units=None):
     props, required = {}, []
     fields = dict(spec["request"])
 
@@ -565,8 +568,23 @@ def _tool(name, spec, variables, speech=None, service=None, closings=()):
                              "url": {"type": "string", "default": spec["url"]}, "method": {"type": "string", "default": spec["method"]}, "headers": HDR,
                              "body": {"type": "object", "required": required, "properties": props}}}},
             "pre_process_code": codegen.scrubbed("import json\nimport re as _re\n" + bind + PRE),
-            "post_process_code": codegen.scrubbed(("import json\n" if speech else "") + POST + ("\n" + speech + SPEECH_CALL.replace("SERVICE_NAME", repr(service or name))
-                                                  .replace("HEXCLOSINGS", json.dumps(sorted(closings, key=len, reverse=True), ensure_ascii=False).encode("utf-8").hex()) if speech else ""))}
+            "post_process_code": codegen.scrubbed(("import json\nimport re\n" if speech else "") + POST + ("\n" + speech + SPEECH_CALL.replace("SERVICE_NAME", repr(service or name))
+                                                  .replace("HEXCLOSINGS", json.dumps(sorted(closings, key=len, reverse=True), ensure_ascii=False).encode("utf-8").hex())
+                                                  .replace("HEXUNITS", json.dumps(full_units or {}, ensure_ascii=False).encode("utf-8").hex()) if speech else ""))}
+
+
+def full_unit_aliases(script):
+    """Derive shortened spoken units from the Reader's own code-to-full-name glossary, never from case constants."""
+    out = {}
+    for full in re.findall(r"\b[A-Z]{2,5}\s*=\s*[«\"]([^»\"]+)[»\"]", script):
+        words = full.strip().split()
+        if len(words) < 2:
+            continue
+        last = words[-1]
+        short = last[:-2] if last[-2:].lower() in ("sı", "si", "su", "sü") else last[:-1] if last[-1:].lower() in ("ı", "i", "u", "ü") else ""
+        if len(short) >= 3:
+            out[short.lower()] = full
+    return out
 
 
 def tool_names(tools):
@@ -593,6 +611,7 @@ def assemble(design, tools, variables=None, speech=None):
     """The workflow, and the little of a SPEC that verify.lint reads. `speech` is the code of prepare(), when there is one."""
     variables = list(variables if variables is not None else design.get("variables") or [])
     names = tool_names(tools)
+    full_units = full_unit_aliases(design["script"]) if speech else {}
     notes = {s["name"]: s for s in design["services"]}
     nodes = {"setup": code_node("setup", codegen.embed({}, SETUP), [tr("talk", "always")])}
     exits, closings = [], []
@@ -614,20 +633,20 @@ def assemble(design, tools, variables=None, speech=None):
             + (("CALL VARIABLES. These values came with the call; never ask the caller for them. " + call_values + "\n\n") if call_values else "")
             + ("MANDATORY CHECKS FROM THE DOCUMENTS\n" + "\n".join("- " + x for x in design.get("checks", [])) + "\n\n" if design.get("checks") else "")
             + "THE CALL\n" + design["script"]
-            + "\n\nORDER AND COMPLETENESS. Follow the numbered steps above in their exact order. When a step asks the caller a question, wait for their answer before starting a later step or offer. If an answer is unclear, repeat the confirmation for the same current operation and name that operation; never use wording from a different action. Before finishing any reading from a service response, check every required component in the script, including required statements about empty or zero values. Speak those components in the specified order; do not silently skip one. When a step ends the call or says that nothing is offered in that case, do exactly that: never add an offer, a question or a remark the step does not contain."
-            + ("\n\nPREPARED SPEECH. After a service answers, code has already worked on the answer: the tool result may carry `prepared`. `prepared.say` holds sentences of THE CALL completed with this answer's values and with the day of the call taken into account, numbers and dates already in spoken form. `prepared.facts` holds the decisions THE CALL takes from this answer: which case applies, how a date stands to today, what may and may not come next. They were computed, not guessed: wherever the steps call for one of these sentences, say the prepared one exactly as it is written, without re-spelling or rewording any part of it, and rely on the facts instead of working the case out yourself. A long prepared sentence comes as a list of parts: say every part, in order, in the same message. Never change a number, a date or a name in a prepared sentence, and never add a figure it does not contain. What the caller wants, which step comes next and when the call ends still follow THE CALL." if speech else "")
+            + "\n\nORDER AND COMPLETENESS. Follow the numbered steps above in their exact order. When a step asks the caller a question, wait for their answer before starting a later step or offer. If an answer is unclear, repeat the confirmation for the same current operation and name that operation; never use wording from a different action. A repeated request for information you have already read is still in scope: repeat that answer or continue the appropriate step, rather than calling it an unrelated request. PRIVACY OVERRIDE FOR SPOKEN DIGITS: If the caller supplied digits to select or distinguish an item, never speak those digits back at any later point in this call, even when the same digits also appear in a service answer or a prepared sentence. During disambiguation say only that multiple choices still match, then ask for the next detail. In a later reading, omit only the identifying suffix phrase that repeats the supplied digits; preserve the item name, all debt amounts, dates, and other required facts. This rule takes priority over example sentences that contain the caller's digits. Before finishing any reading from a service response, check every required component in the script, including required statements about empty or zero values. Speak those components in the specified order; do not silently skip one. When a step ends the call or says that nothing is offered in that case, do exactly that: never add an offer, a question or a remark the step does not contain."
+            + ("\n\nPREPARED SPEECH. After a service answers, code has already worked on the answer: the tool result may carry `prepared`. `prepared.say` holds sentences of THE CALL completed with this answer's values and with the day of the call taken into account, numbers and dates already in spoken form. `prepared.facts` holds the decisions THE CALL takes from this answer: which case applies, how a date stands to today, what may and may not come next. They were computed, not guessed: wherever the steps call for one of these sentences, preserve its amounts, dates, names, order and meaning, and rely on the facts instead of working the case out yourself. Expand a shortened currency unit in a prepared sentence to the full currency name required by THE CALL. A long prepared sentence comes as a list of parts: say every part, in order, in the same message. Never change a debt amount or a date in a prepared sentence, and never add a figure it does not contain. The privacy override still applies: omit a card suffix phrase when it would repeat digits supplied by the caller. What the caller wants, which step comes next and when the call ends still follow THE CALL." if speech else "")
             + ("\n\nSERVICES (tools). Call one whenever the steps above say so, one call per message. Every tool result carries http_status and a what_to_do_next line: follow it. "
                "A field that a tool does not list among its parameters (a call variable, a fixed value) is filled in by the system: send only the parameters the tool shows.\n"
                + "\n".join(service_lines) if tools else "")
             + ("\n\nNEVER\n" + "\n".join("- " + x for x in design["never"]) if design["never"] else "")
             + "\n\nDATES. The call takes place on {{today_weekday}} {{today_iso}} at {{now_hhmm}}. Never use another clock and never work out a weekday yourself: "
               "read it here (three-letter English weekday, then the date): {{calendar_text}}. Say dates in the call's language, with the month as a word."
-            + "\n\nENDING THE CALL. When the call is over, first speak every result that uses a value from a service, including any completed change or send. Only then call the one ending tool that fits. Do not say the fixed goodbye yourself: the system says the last words. Where a step tells you to say an ending's closing words and end, leave exactly those closing words out of your own message and call the ending tool: it speaks them, once. "
+            + "\n\nENDING THE CALL. When the call is over, first speak every result that uses a value from a service, including any completed change or send. Then call the one ending tool immediately in the same turn; do not wait for another customer message. Do not say the fixed goodbye yourself: the system says the last words. Where a step tells you to say an ending's closing words and end, leave exactly those closing words out of your own message and call the ending tool: it speaks them, once. If you have already said closing words by mistake, still call the ending tool immediately rather than repeating the sentence in another turn. "
               "Never end the call in any other way, and never end a turn with nothing: after every tool result speak or call the next tool.")
     first = design["first_words"]
     nodes["talk"] = {"name": "talk", "node_type": "conversation",
                      "on_enter": {"type": "tts", "text": first} if first else {"type": "llm"}, "on_enter_first_entry_only": True,
-                     "task_message": task, "tools": [_tool(names[n], t, variables, speech, n, closings) for n, t in tools.items()],
+                     "task_message": task, "tools": [_tool(names[n], t, variables, speech, n, closings, full_units) for n, t in tools.items()],
                      "max_node_turns": 80, "max_turn_transition": "final_end", "transitions": exits}
     nodes["final_end"] = {"name": "final_end", "node_type": "end_call", "on_enter": {"type": "silent"}, "disable_inactivity_monitor": True, "transitions": [],
                           "terminal": {"type": "function", "function": {"name": "call_finished", "handler": "__function__:end_call",
@@ -636,6 +655,11 @@ def assemble(design, tools, variables=None, speech=None):
     system = (f"You are a phone agent: {design['role']} Speak {design['language']} with the customer, always. Every turn is one or two short spoken sentences, "
               "no lists, no markdown. Your instructions are complete: follow them step by step and add nothing of your own. A fact you were not given by your "
               "instructions or by a service answer you do not have: say so instead of guessing.")
+    if any("repeat" in rule.lower() and "digit" in rule.lower() for rule in design["never"]):
+        system += (" Do not echo any digit sequence that the caller has spoken, even if a scripted sentence or a service answer contains it. "
+                   "Use a neutral reference to the chosen item, and ask for the next distinguishing detail without restating the digits. "
+                   "If the script gives successive lengths of identifying digits, ask for each length in that exact order; never skip an intermediate length when the previous answer still matches multiple items. "
+                   "Keep all amounts and dates in the eventual result.")
     wf = {"initial_node": "setup", "system_prompt": system, "tools": [], "global_nodes": {}, "nodes": nodes}
     shim = {"call_variables": [{"name": v, "role": "other", "meaning": ""} for v in variables]}
     return wf, shim
