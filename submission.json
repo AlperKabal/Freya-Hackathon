@@ -11,7 +11,7 @@
     }
   ],
   "repo": "https://github.com/AlperKabal/Freya-Hackathon",
-  "commit": "86129491b0f5c421bc8a7840e54b5bc42affab60",
+  "commit": "472d304d2821628954d24946106488b71762bd8b",
   "run_command": "cd build-the-builder && python3 builder/build.py {case_folder} https://freya-final-mock.yasardelibas33.workers.dev --slot yasar-exp-date --design ../submission/provenance/yasar-exp-date.design.json",
   "workflow": "submission/final.workflow.json",
   "trace": "traces/final.log",
