@@ -126,7 +126,8 @@ def cases(P):
       "arrangement", promises=[("a1", 380.0, day("2026-11-09"))], not_said=["Saturday 7 November 2026?"])
     C("34s", "...and the assistant names no day of its own after refusing the Saturday (3.5)", "Dates",
       V + [("neg", Customer({"kind": "propose", "day": "Saturday", "said": "I can pay on Saturday."}, then=[{"kind": "propose", "day": "Monday", "said": "Monday then."}]))],
-      "arrangement", promises=[("a1", 380.0, day("2026-11-09"))], offered=[], tier=2)
+      "arrangement", promises=[("a1", 380.0, day("2026-11-09"))], offered=[], tier=2,
+      note="the SPEC's reject has one follow-up: say the day is not possible and repeat the open offer (dev/specs/imaginary-d.md, D13, asks for exactly that). This brief asks for the other one: ask which day suits. No field of the SPEC tells the two apart")
     C("35", "Names the closure day the memo added (13 November), then the day before it", "Dates",
       V + [("neg", Customer({"kind": "propose", "day": "the 13th of November"}, then=[{"kind": "propose", "day": "Thursday the 12th"}]))],
       "arrangement", promises=[("a1", 380.0, day("2026-11-12"))])

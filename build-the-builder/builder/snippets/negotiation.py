@@ -140,11 +140,13 @@ def _plain(text):
 
 
 def has_evidence(said, words):
-    """Do the customer's own words contain one of the evidence words (a word stem or a phrase, at the start of a word)?"""
+    """Do the customer's own words contain one of the evidence words (a word stem or a phrase, at the start of a word)?
+    A word marked with "=" counts only as a whole word: a longer word of the agent's own sentences begins like it."""
     t = " " + _plain(said)
     for w in words or []:
+        whole = str(w).startswith("=")
         w = _plain(w)
-        if w and (" " + w) in t:
+        if w and (((" " + w + " ") in (t + " ")) if whole else ((" " + w) in t)):
             return True
     return False
 
@@ -377,6 +379,9 @@ def _date_for_all(state, iso, plan, today, cfg):
         d, changed, why = _check_day(iso, plan[i], today, cfg)
         if d is not None:
             moved.append((i, d, changed and not why.startswith("after")))
+    if not moved and _open(state):
+        state["all_day_ask"] = True                      # the next day named without a product is again for all of them
+        return state, "That day is not possible. On which other day could you pay?", "talk"
     if len(moved) > 1 and any(m for _, _, m in moved):
         same = len({d for _, d, _ in moved}) == 1
         for i, d, _ in moved:
@@ -435,6 +440,7 @@ def _step(state, ev, plan, today, cfg):
     if day["status"] == "exact" and day["date"] == today.isoformat() and kind in ("refuse", "too_much", UNCONFIRMED):
         day = {"status": "none", "date": ""}
     together = state.pop("all_day", None)                # the last sentence offered one corrected day for several products
+    asked_all = state.pop("all_day_ask", None)           # the last sentence asked for another day for all of them
     if together and kind == "accept" and day["status"] != "exact" and amount is None and state["phase"] != "confirm":
         for i in together:
             if state["p"][i]["status"] == "open":
@@ -523,7 +529,7 @@ def _step(state, ev, plan, today, cfg):
             return state, _answer_first(say, nxt) if kind == UNCONFIRMED else say, nxt
         state["cursor"] = 0
         return _on_product(state, kind, day, amount, plan, today, cfg)
-    if kind == "propose" and day["status"] == "exact" and _to_all(ev.get("about"), multi) and amount is None:
+    if kind == "propose" and day["status"] == "exact" and amount is None and (_to_all(ev.get("about"), multi) or (asked_all and multi and not ev.get("about"))):
         return _date_for_all(state, day["date"], plan, today, cfg)
     return _on_product(state, kind, day, amount, plan, today, cfg)
 

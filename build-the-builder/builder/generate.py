@@ -52,12 +52,25 @@ def times(n):
     return {1: "once", 2: "twice"}.get(n, f"{n} times")
 
 
+def _plain(t):
+    return re.sub(r"([a-z])\1+", r"\1", re.sub(r"[^a-z0-9]+", " ", str(t or "").lower()).strip())
+
+
 def stem_in(stem, text):
     """Does the text hold this word stem (or phrase) at the start of a word? The same comparison as has_evidence in
     snippets/negotiation.py, which runs on the platform and cannot be imported here."""
-    def plain(t):
-        return re.sub(r"([a-z])\1+", r"\1", re.sub(r"[^a-z0-9]+", " ", str(t or "").lower()).strip())
-    return bool(plain(stem)) and (" " + plain(stem)) in (" " + plain(text))
+    return bool(_plain(stem)) and (" " + _plain(stem)) in (" " + _plain(text))
+
+
+def word_in(word, text):
+    """Does the text hold this word (or phrase) as whole words?"""
+    return bool(_plain(word)) and (" " + _plain(word) + " ") in (" " + _plain(text) + " ")
+
+
+# the words of the sentences the state machine itself says (snippets/negotiation.py): a customer may repeat any of them
+OWN_FIXED = ("can you pay for your on today tomorrow instead could you make that payment which exact day could you pay on which day can you pay "
+             "that day is not possible the latest date i can record is it let me read your promise back you will pay and does that work for you "
+             "sorry could you say that again")
 
 
 # A sentence that code writes into a spoken variable is said as it stands: the platform fills {{name}} only in a
@@ -413,7 +426,7 @@ vars['id_state'] = 'open'
         if x["scope"] != "call" or x.get("offer") or not set(x["stages"]) & {"identity", "negotiation", "confirmation"}:
             return ""
         words = self.evidence(x)
-        ex = (" (words like: " + ", ".join(f"'{w}'" for w in words[:6]) + ")") if words else ""
+        ex = (" (words like: " + ", ".join(f"'{w.lstrip('=')}'" for w in words[:6]) + ")") if words else ""
         return (" Only when the customer says this clearly and explicitly. A plain no, saying they cannot pay, or asking"
                 " what options or other ways there are is, by itself, NOT this. But when the same message also asks for exactly this"
                 + ex + ", it IS this, even if it also says they cannot pay.")
@@ -434,7 +447,18 @@ vars['id_state'] = 'open'
                         s["confirmation"]["question"]] + [p["spoken_name"] for p in s["account"]["product_types"]])
         own = PH.sub(" ", own)                                   # placeholders are not words anyone says
         words = [w.strip().lower() for w in x.get("evidence_words") or [] if isinstance(w, str)]
-        return [w for w in words if len(re.sub(r"[^a-z0-9]", "", w)) >= 3 and not stem_in(w, own)]
+        out = []
+        for w in words:
+            if len(re.sub(r"[^a-z0-9]", "", w)) < 3:
+                continue
+            if not stem_in(w, own):
+                out.append(w)
+            elif not word_in(w, own + " " + OWN_FIXED):
+                # only a longer word of the agent's sentences begins like it (a product name that starts with the
+                # word for a human being): as a stem it would be an echo, as a whole word it is still the customer's
+                # own request ("=" marks that)
+                out.append("=" + w)
+        return out
 
     def sit_trigger(self, x, with_not=False):
         t = x["trigger"]

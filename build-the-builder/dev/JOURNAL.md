@@ -727,3 +727,12 @@ date on a Sunday). After it: the 16 existing checks pass, `test_mock_briefs` has
 Not verified: the Reader on the mock briefs (`python dev/run_mock_briefs.py --extract`, about two minutes of model
 time per pack; this clone has no Claude login) and pack F on the platform (`--simulate`, needs the keys). What is
 still open is listed in the README, by tier.
+
+Second round, same afternoon: an evidence word that only begins a longer word of the agent's own sentences ("person"
+before a product name) is kept as a whole word instead of dropped (`=` marks it; `has_evidence` reads it); one day
+for several products that none of them can have says so and asks for another day instead of using up an attempt.
+A single product's refused day was left as it is: `imaginary-d.md` D13 asks to repeat the open offer, packs D and E
+ask which day suits, and `reject` is one value (listed under "Rules the SPEC cannot say").
+`dev/walk_practice.py` (new) plays the 13 practice customers through the walker and scores the records with
+`tools/score.py`: 13 of 13 on the reference SPECs, in two seconds. It checks what code decides, not the conversation.
+

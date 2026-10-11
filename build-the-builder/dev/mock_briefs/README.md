@@ -9,6 +9,7 @@ this folder may be copied into `builder/`. Only new files were added; no existin
     python dev/test_mock_briefs.py variants --only no_callback
     python dev/run_mock_briefs.py --extract           # with the Claude login: read each pack's documents, compare with the oracle, walk the customers
     python dev/run_mock_briefs.py --simulate <agent>  # with the Freya keys: pack F's customers on the platform
+    python dev/walk_practice.py                       # the 13 practice customers through the walker, scored by tools/score.py: 2 s
     python dev/mock_briefs/make.py                    # rewrite the generated files after a change
 
 A FAIL is a difference between what a brief's text requires and what the generated agent does. Tier 1: a rule of
@@ -71,13 +72,18 @@ fixes of `bb8e28e`. `python dev/test_mock_briefs.py` now ends with tier 1: 0.
 9. By the commits `bbb9e9b`..`54266e9` (made while this folder was written): a date more than ten weeks ahead, or
    before today, is no longer said as digits; "today" asked per product on a day that is no business day.
 
+10. **An evidence word that is part of a product name was dropped**: "person" is in "personal loan", so "Can I
+    speak to a real person?" was not acted on the first time and a persuasion attempt was used instead. Such a word
+    is now kept as a whole word. (`D-69`)
+11. **One day for several products that none of them can have** used up the first product's attempt 1 and never
+    said that the day is not possible. It now says so and asks for another day. (`D-89`)
+
 ### Open, tier 2
 
-- **An evidence word that is part of a product name is dropped.** "person" is in "personal loan", so "Can I speak
-  to a real person?" is not acted on the first time and a persuasion attempt is used instead. (`D-69`)
 - **A day that is refused, not replaced** (`non_business_day: reject`, `after_deadline: reject`): the agent says
-  "That day is not possible." and then repeats its open offer, which names today, instead of asking for another
-  day. With several products the first one's attempt 1 is used up as well. (`D-34s`, `E-40`, `D-89`)
+  "That day is not possible." and repeats its open offer. `dev/specs/imaginary-d.md` (D13) asks for exactly that;
+  pack D and pack E ask for the other follow-up, "ask which day suits". The SPEC has one value for both, so one
+  of the two briefs is always answered in the other's way. (`D-34s`, `E-40`)
 - **When no day is possible** (the earliest day is after the deadline) the agent still offers and records the
   deadline. (`d+earliest_tomorrow`, `d+earliest_next_business_day`, on the last business day before Christmas)
 - **Answers in less common words** are sent as they are: "It's LS6 2AB", a code with a dash, a code in two turns,
@@ -117,6 +123,7 @@ the SPEC has, or into a free rule that the orchestrated negotiation does not act
 
 - a deadline on a fixed date, or taken from a field of the account (a statement date);
 - a day that is no business day replaced by the business day **before** it;
+- what follows a refused day: repeat the open offer, or ask which day suits (`reject` is one value);
 - a limit of wrong answers per question (when the API does not report the tries left);
 - products in another order than the tool returned them (most overdue first);
 - a close that depends on whether all or only some products were promised, or on full against part payment;

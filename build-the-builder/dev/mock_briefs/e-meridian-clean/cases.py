@@ -131,7 +131,8 @@ def cases(P):
     C("39", "'This Friday' is the Friday of this week", "Dates", V + [("neg", Customer({"kind": "propose", "day": "this Friday"}))], "agreed", promises=[("f1", 5400.0, day("2026-10-16"))])
     C("40", "A date after the deadline is not counted as a refusal: no attempt is used, no day is named for the contact", "Dates",
       V + [("neg", Customer({"kind": "propose", "day": said_day(dl(LOAN_S) + dt.timedelta(days=5)), "said": "We can pay then."},
-                            then=[{"kind": "propose", "day": said_day(dl(LOAN_S)), "said": "Then on that day."}]))], "agreed", promises=[("f1", 5400.0, dl(LOAN_S))], offered=[], tier=2)
+                            then=[{"kind": "propose", "day": said_day(dl(LOAN_S)), "said": "Then on that day."}]))], "agreed", promises=[("f1", 5400.0, dl(LOAN_S))], offered=[], tier=2,
+      note="the SPEC's reject has one follow-up: say the day is not possible and repeat the open offer (dev/specs/imaginary-d.md, D13, asks for exactly that). This brief asks for the other one: ask which day suits. No field of the SPEC tells the two apart")
 
     # ------------------------------------------------------------ amounts (rules 24 to 27, 29)
     C("41", "The full amount is too much: the minimum once, with the sentence", "Amounts", V + [("neg", Customer("too_much", then=["accept"]))], "agreed",
