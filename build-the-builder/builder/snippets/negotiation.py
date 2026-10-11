@@ -7,6 +7,8 @@ dates snippet, which it uses) and locally in tests. Only json, re, datetime; no 
     event: {"kind": ..., "day": words, "amount": words, "about": words}   (kind from the extraction enum)
     nxt: "talk" (say it and wait) | "record" (the customer confirmed the read-back) | "close" (nothing agreed)
 A say text that starts with ASK_FIRST: means: answer the customer's question in one sentence, then say the rest.
+SPEC switches in the config (absent = the common case): single_read_back, ask_all_once, state_all_first,
+attempts_per_product with call_attempt_limit (0 = none).
 """
 
 _SMALL = {"zero": 0, "oh": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
@@ -31,34 +33,79 @@ def _words_value(words):
     return (total + cur) if seen else None
 
 
-def parse_amount(text):
+_MONTHS_RE = r"(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)"
+# day numbers are not amounts: "the 16th", "on 16 October", "October 16", "the twenty-third", a date in ISO form
+_DAY_TOKENS = [r"\b\d{4}-\d{2}-\d{2}\b", r"\b\d{1,2}(?:st|nd|rd|th)\b", r"\b\d{1,2}(?: of)? " + _MONTHS_RE + r"\b",
+               r"\b" + _MONTHS_RE + r" (?:the )?\d{1,2}\b",
+               r"\bthe (?:(?:twenty|thirty) )?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|"
+               r"thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth)\b"]
+_CENTS = r"\b(?:and )?(\d{1,2}|[a-z]+(?: [a-z]+)?) (?:cents?|pence)\b"
+
+
+def _chunks(head):
+    """Number words -> two-digit chunks: 'twelve fifty' -> [12, 50], 'twenty five fifty' -> [25, 50]; None when the
+    words use hundred/thousand or are not a plain chunk sequence."""
+    out, i = [], 0
+    while i < len(head):
+        w = head[i]
+        if w not in _SMALL:
+            return None
+        v = _SMALL[w]
+        if v >= 20 and v % 10 == 0 and i + 1 < len(head) and head[i + 1] in _SMALL and 0 < _SMALL[head[i + 1]] < 10:
+            v += _SMALL[head[i + 1]]
+            i += 1
+        out.append(v)
+        i += 1
+    return out
+
+
+def parse_amount(text, rng=None):
     """'four hundred and fifty-five' -> 455.0, '153.50' -> 153.5, '1,320' -> 1320.0, 'one twenty five' -> 125.0,
-    '637 pounds 50' -> 637.5. None if no amount."""
-    t = str(text or "").lower().replace(",", "").replace("-", " ")
-    m = _re.search(r"(\d+(?:\.\d{1,2})?)", t)
-    if m:
-        v = float(m.group(1))
-        cents = _re.search(r"\d+\s*(?:pounds?|euros?|dollars?|lira)\s*(?:and\s*)?(\d{1,2})\b", t)
-        if cents and "." not in m.group(1):
-            v += int(cents.group(1)) / 100.0
-        return round(v, 2)
+    '637 pounds 50' -> 637.5, 'on the 16th I can pay 200' -> 200.0, '... dollars and twenty cents' -> +0.20.
+    A spoken pair like 'twelve fifty' is 1250 or 12.50: `rng` (lowest, highest plausible amount) picks the reading
+    inside it, else the hundreds reading. None if no amount."""
+    t = " " + str(text or "").lower().replace(",", "").replace("-", " ") + " "
+    for p in _DAY_TOKENS:
+        t = _re.sub(p, " ", t)
+    cents = 0.0
+    c = _re.search(_CENTS, t)
+    if c:
+        cv = int(c.group(1)) if c.group(1).isdigit() else _words_value(c.group(1).split())
+        if cv is not None and 0 < cv < 100:
+            cents = cv / 100.0
+            t = t[:c.start()] + " " + t[c.end():]
     words = _re.findall(r"[a-z]+", t)
-    for i, w in enumerate(words):
-        if w in _SMALL or w in ("hundred", "thousand"):
-            seq = words[i:]
-            point = seq.index("point") if "point" in seq else None
-            head = seq[:point] if point is not None else seq
-            whole = _words_value(head)
-            if whole is None:
-                return None
-            if len(head) >= 2 and head[0] in _SMALL and _SMALL[head[0]] < 10 and head[1] in _SMALL and _SMALL[head[1]] >= 10:
-                whole = _SMALL[head[0]] * 100 + (_words_value(head[1:]) or 0)          # "one twenty five" = 125
-            frac = 0.0
-            if point is not None:
-                digits = [str(_SMALL[x]) for x in seq[point + 1:point + 3] if x in _SMALL and _SMALL[x] < 10]
-                frac = float("0." + "".join(digits)) if digits else 0.0
-            return round(whole + frac, 2)
-    return None
+    first_word = next((i for i, w in enumerate(words) if w in _SMALL or w in ("hundred", "thousand")), None)
+    m = _re.search(r"(\d+(?:\.\d{1,2})?)", t)
+    # digits win, unless the number is said in words before them ("four hundred ... and 20 cents" had its cents removed)
+    wpos = _re.search(r"\b" + words[first_word] + r"\b", t).start() if first_word is not None else len(t)
+    if m and not wpos < m.start():
+        v = float(m.group(1))
+        unit = _re.search(r"\d+\s*(?:pounds?|euros?|dollars?|lira)\s*(?:and\s*)?(\d{1,2})\b", t)
+        if unit and "." not in m.group(1):
+            v += int(unit.group(1)) / 100.0
+        return round(v + (cents if "." not in m.group(1) else 0.0), 2)
+    if first_word is None:
+        return None
+    seq = words[first_word:]
+    point = seq.index("point") if "point" in seq else None
+    head = seq[:point] if point is not None else seq
+    end = next((k for k, w in enumerate(head) if w not in _SMALL and w not in ("hundred", "thousand", "million", "and", "a")), len(head))
+    head = head[:end]
+    whole = _words_value(head)
+    if whole is None:
+        return None
+    ch = _chunks([w for w in head if w not in ("and", "a")])
+    if ch and len(ch) == 2 and ch[1] >= 10:                       # "twelve fifty", "one twenty five", "twenty five fifty"
+        hundreds, decimal = ch[0] * 100 + ch[1], ch[0] + ch[1] / 100.0
+        whole = hundreds
+        if rng and not (rng[0] <= hundreds <= rng[1]) and rng[0] <= decimal <= rng[1]:
+            whole = decimal
+    frac = 0.0
+    if point is not None:
+        digits = [str(_SMALL[x]) for x in seq[point + 1:point + 3] if x in _SMALL and _SMALL[x] < 10]
+        frac = float("0." + "".join(digits)) if digits else 0.0
+    return round(whole + frac + cents, 2)
 
 
 def money(x):
@@ -68,7 +115,16 @@ def money(x):
 def new_state(plan):
     return {"phase": "today", "cursor": 0, "pending_amount": None,
             "p": [{"status": "open", "attempt": 0, "too_much": False, "floor_offered": False, "vague_asks": 0, "below_asks": 0,
-                   "offer_amt": pp["full"], "offer_date": pp["today"], "amt": None, "date": None, "note": "", "clamped": False} for pp in plan]}
+                   "offer_amt": _first(pp), "offer_date": pp["today"], "amt": None, "date": None, "note": "", "clamped": False} for pp in plan]}
+
+
+# a product's amounts from the SPEC's amount rules (built by the account code node); older plans fall back to the
+# common ladder: first the full amount, accept floor..full, offer the floor when it is too much or too low
+def _first(pp): return pp.get("first", pp["full"])
+def _lo(pp): return pp.get("lo", pp["floor"])
+def _hi(pp): return pp.get("hi", pp["full"])
+def _tm(pp): return pp.get("tm", pp["floor"])
+def _bm(pp): return pp.get("bm", pp["floor"])
 
 
 def _open(state):
@@ -90,21 +146,27 @@ def _offer_text(pp, x, cfg, new_floor=False):
     return s
 
 
-def _ladder_offer(pp, x):
-    """Set the product's next persuasion offer; False when its attempts are used up."""
+def _ladder_offer(pp, x, state=None, cfg=None):
+    """Set the product's next persuasion offer; False when its attempts are used up. When the SPEC counts attempts
+    for the whole call, the call's limit (or, without one, the product's own band limit) caps the call's total."""
     if x["attempt"] >= len(pp["ladder"]):
         return False
+    if state is not None and cfg is not None and not cfg.get("attempts_per_product", True):
+        limit = int(cfg.get("call_attempt_limit") or 0) or len(pp["ladder"])
+        if int(state.get("used", 0)) >= limit:
+            return False
+        state["used"] = int(state.get("used", 0)) + 1
     st = pp["ladder"][x["attempt"]]
     x["attempt"] += 1
     amt = st["amount"]
     if st["kind"] == "full_or_floor_if_too_much":
-        amt = pp["floor"] if x["too_much"] else pp["full"]
+        amt = _tm(pp) if x["too_much"] else _first(pp)
     x["offer_amt"], x["offer_date"] = amt, st["date"]
     return True
 
 
-def _end(x, reason):
-    x["status"], x["note"] = "ended", reason
+def _end(x, reason, why="situation"):
+    x["status"], x["note"], x["why"] = "ended", reason, why
 
 
 def _agree(x, amt, date):
@@ -142,6 +204,8 @@ def _to_all(about, multi):
 
 def _next_product(state, plan, cfg):
     """Move to the next open product and make its first persuasion offer; or go to the read-back / close."""
+    if not cfg.get("single_read_back", True) and _unconfirmed(state):
+        return _read_back(state, plan, cfg, _unconfirmed(state))
     while True:
         op = _open(state)
         if not op:
@@ -149,19 +213,34 @@ def _next_product(state, plan, cfg):
         i = op[0]
         state["cursor"] = i
         x, pp = state["p"][i], plan[i]
-        if _ladder_offer(pp, x):
-            return "talk", _offer_text(pp, x, cfg)
-        _end(x, cfg["exhausted_note"])
+        lead = ""
+        if not x.get("stated") and not cfg.get("state_all_first", True):
+            x["stated"] = True
+            lead = pp.get("statement", "")
+        if _per_product_today(plan, cfg) and not x.get("asked_today"):
+            x["asked_today"] = True
+            x["offer_amt"], x["offer_date"] = _first(pp), pp["today"]
+            generic = "Can you pay " + money(_first(pp)) + " for your " + pp["name"] + " today?"
+            ask = (cfg.get("first_ask") or generic) if lead else generic
+            return "talk", (lead + " " + ask).strip()
+        if _ladder_offer(pp, x, state, cfg):
+            return "talk", (lead + " " + _offer_text(pp, x, cfg)).strip()
+        _end(x, cfg["exhausted_note"], "exhausted")
 
 
-def _finish(state, plan, cfg):
-    agreed = [i for i, x in enumerate(state["p"]) if x["status"] == "agreed"]
-    if not agreed:
-        state["phase"] = "closed"
-        return "close", ""
-    state["phase"] = "confirm"
+def _per_product_today(plan, cfg):
+    """The SPEC asks about today per product (or states the products one by one, which implies it)."""
+    return len(plan) > 1 and (not cfg.get("ask_all_once", True) or not cfg.get("state_all_first", True))
+
+
+def _unconfirmed(state):
+    return [i for i, x in enumerate(state["p"]) if x["status"] == "agreed" and not x.get("confirmed")]
+
+
+def _read_back(state, plan, cfg, ids):
+    state["phase"], state["confirming"] = "confirm", ids
     parts = []
-    for i in agreed:
+    for i in ids:
         x, pp = state["p"][i], plan[i]
         line = money(x["amt"]) + " for your " + pp["name"] + " on " + _day(pp, x["date"])
         if x["clamped"]:
@@ -170,11 +249,24 @@ def _finish(state, plan, cfg):
     return "talk", "So that is " + "; and ".join(parts) + ". " + cfg["confirm_question"]
 
 
+def _finish(state, plan, cfg):
+    agreed = [i for i, x in enumerate(state["p"]) if x["status"] == "agreed"]
+    if not agreed:
+        state["phase"] = "closed"
+        return "close", ""
+    if not cfg.get("single_read_back", True):
+        if _unconfirmed(state):
+            return _read_back(state, plan, cfg, _unconfirmed(state))
+        state["phase"] = "record"
+        return "record", ""
+    return _read_back(state, plan, cfg, agreed)
+
+
 def _refused(state, i, plan, cfg):
     x, pp = state["p"][i], plan[i]
-    if _ladder_offer(pp, x):
+    if _ladder_offer(pp, x, state, cfg):
         return state, _offer_text(pp, x, cfg), "talk"
-    _end(x, cfg["exhausted_note"])
+    _end(x, cfg["exhausted_note"], "exhausted")
     nxt, say = _next_product(state, plan, cfg)
     return state, say, nxt
 
@@ -184,7 +276,7 @@ def _below_min(state, i, plan, cfg):
     if x["below_asks"] >= 1:
         return _refused(state, i, plan, cfg) if cfg["floor_refused_is_flat"] else (state, _offer_text(pp, x, cfg), "talk")
     x["below_asks"] += 1
-    x["offer_amt"] = pp["floor"]
+    x["offer_amt"] = _bm(pp)
     return state, ((cfg["below_min_say"] + " ") if cfg["below_min_say"] else "") + _offer_text(pp, x, cfg, new_floor=True), "talk"
 
 
@@ -195,21 +287,29 @@ def _date_for_all(state, iso, plan, today, cfg):
         d, changed, why = _check_day(iso, pp, today, cfg)
         if d is None:
             continue
-        x["clamped"] = changed and why.startswith("after") and d == pp["deadline"]
+        # the SPEC says whether one date past a product's deadline puts that product on its own deadline (said in the
+        # read-back) or is offered first like a single product's late date
+        x["clamped"] = bool(cfg.get("one_date_clamped", True)) and changed and why.startswith("after") and d == pp["deadline"]
         if changed and not x["clamped"]:                      # e.g. a holiday: offer the next business day first
-            x["offer_amt"], x["offer_date"] = (pp["floor"] if x["too_much"] else pp["full"]), d
+            x["offer_amt"], x["offer_date"] = (_tm(pp) if x["too_much"] else _first(pp)), d
             state["cursor"] = i
             return state, "That day is not possible for your " + pp["name"] + ". " + _offer_text(pp, x, cfg), "talk"
-        _agree(x, pp["floor"] if x["too_much"] else pp["full"], d)
+        _agree(x, _tm(pp) if x["too_much"] else _first(pp), d)
     nxt, say = _next_product(state, plan, cfg)
     return state, say, nxt
 
 
 def step(state, ev, plan, today, cfg):
-    """One customer turn. Never raises: on any error it asks the customer to repeat."""
+    """One customer turn. Never raises: on any error it asks the customer to repeat, and keeps the error in
+    state['err'] (the code node writes it to vars['neg_error'], so a silent loop shows in the transcript)."""
     try:
+        state.pop("err", None)
         return _step(state, ev, plan, today, cfg)
-    except Exception:
+    except Exception as e:
+        try:
+            state["err"] = (type(e).__name__ + ": " + str(e))[:200]
+        except Exception:
+            pass
         return state, "Sorry, could you say that again?", "talk"
 
 
@@ -219,7 +319,8 @@ def _step(state, ev, plan, today, cfg):
     if state["phase"] in ("closed", "record"):
         return state, "", ("close" if state["phase"] == "closed" else "record")
     day = resolve_spoken_date(ev.get("day"), today, cfg) if ev.get("day") else {"status": "none", "date": ""}
-    amount = parse_amount(ev.get("amount")) if ev.get("amount") else None
+    rng = (min(_lo(pp) for pp in plan), max(_hi(pp) for pp in plan)) if plan else None
+    amount = parse_amount(ev.get("amount"), rng) if ev.get("amount") else None
     sits = cfg["product_situations"]
     if kind not in sits:
         if day["status"] == "exact" or (amount is not None and kind in ("accept", "unclear", "refuse", "propose")):
@@ -228,17 +329,27 @@ def _step(state, ev, plan, today, cfg):
             kind = "vague"
     # ---- the read-back was answered
     if state["phase"] == "confirm":
+        single = cfg.get("single_read_back", True)
+        if single:
+            reading = [i for i, x in enumerate(state["p"]) if x["status"] == "agreed"]
+        else:
+            reading = [i for i in state.get("confirming", []) if state["p"][i]["status"] == "agreed"]
         if kind == "accept":
-            state["phase"] = "record"
-            return state, "", "record"
-        if kind == "refuse":
-            for x in state["p"]:
-                if x["status"] == "agreed":
-                    _end(x, cfg["exhausted_note"])
-            nxt, say = _finish(state, plan, cfg)
+            if single:
+                state["phase"] = "record"
+                return state, "", "record"
+            for i in reading:
+                state["p"][i]["confirmed"] = True
+            state["phase"] = "offer"
+            nxt, say = _next_product(state, plan, cfg)
             return state, say, nxt
-        if kind == "propose":
-            agreed = [i for i, x in enumerate(state["p"]) if x["status"] == "agreed"]
+        if kind == "refuse":
+            for i in reading:
+                _end(state["p"][i], cfg["exhausted_note"], "exhausted")
+            nxt, say = _finish(state, plan, cfg) if single else _next_product(state, plan, cfg)
+            return state, say, nxt
+        if kind == "propose" and reading:
+            agreed = reading
             target = agreed if _to_all(ev.get("about"), multi) or len(agreed) == 1 else [_which(ev.get("about"), plan, agreed[0])]
             for i in target:
                 state["p"][i]["status"] = "open"
@@ -260,9 +371,15 @@ def _step(state, ev, plan, today, cfg):
     # ---- the first ask, about today, for every product at once
     if state["phase"] == "today":
         state["phase"] = "offer"
+        if _per_product_today(plan, cfg):
+            state["p"][0]["asked_today"] = state["p"][0]["stated"] = True
+            if kind == "propose" and day["status"] == "exact" and _to_all(ev.get("about"), multi) and amount is None:
+                return _date_for_all(state, day["date"], plan, today, cfg)
+            state["cursor"] = 0
+            return _on_product(state, kind, day, amount, plan, today, cfg)
         if kind == "accept":
             for i, x in enumerate(state["p"]):
-                _agree(x, plan[i]["full"], plan[i]["today"])
+                _agree(x, _first(plan[i]), plan[i]["today"])
             nxt, say = _finish(state, plan, cfg)
             return state, say, nxt
         # one date for several products (multi-product rule: each on its own deadline if needed, said in the read-back);
@@ -294,8 +411,8 @@ def _on_product(state, kind, day, amount, plan, today, cfg):
         return state, say, nxt
     if kind == "propose":
         amt = amount if amount is not None else (state["pending_amount"] if state["pending_amount"] is not None else x["offer_amt"])
-        amt = min(amt, pp["full"])
-        if amt < pp["floor"]:
+        amt = min(amt, _hi(pp))
+        if amt < _lo(pp):
             if day["status"] == "exact":
                 d, _, _ = _check_day(day["date"], pp, today, cfg)
                 x["offer_date"] = d or x["offer_date"]
@@ -318,7 +435,7 @@ def _on_product(state, kind, day, amount, plan, today, cfg):
     if kind == "too_much":
         x["too_much"] = True
         if not x["floor_offered"]:
-            x["offer_amt"] = pp["floor"]
+            x["offer_amt"] = _tm(pp)
             return state, _offer_text(pp, x, cfg, new_floor=True), "talk"
         return _refused(state, i, plan, cfg) if cfg["floor_refused_is_flat"] else (state, _offer_text(pp, x, cfg), "talk")
     if kind == "vague":

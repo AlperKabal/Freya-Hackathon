@@ -146,6 +146,7 @@ SCHEMA = {
         "attempts_exhausted": {"outcome": str, "reason": str, Opt("note_reason"): str},
         "forbidden_offers": [str],
         "forbidden_questions": [str],
+        Opt("call_attempt_limit"): int,               # attempts for the whole call (multi_product.attempts_per_product false); 0 = none given
     },
     "confirmation": {
         "read_back": [str], "question": str, "require_clear_yes": bool,
@@ -174,12 +175,16 @@ SCHEMA = {
         "source": str,
     }],
     "faq": [{"trigger": str, "answer": str, "source": str}],
+    # state_all_first false: each product is stated when it is reached; ask_all_today_once false: "today" is asked per
+    # product; attempts_per_product false: attempts count for the whole call (negotiation.call_attempt_limit);
+    # single_read_back false: each promise is read back when it is agreed
     "multi_product": {
         "enabled": bool, "state_all_first": bool, "ask_all_today_once": bool, "first_ask_all": str,
         "order": Enum(["as_returned"]), "attempts_per_product": bool,
         "one_date_clamped_per_product": bool, "single_read_back": bool,
         "unrecorded_on_transfer": Enum(["drop", "record"]),
     },
+    # for_each_product_without_promise false: only situations that name a note write one (not used-up attempts)
     "notes": {"enabled": bool, "for_each_product_without_promise": bool, "reasons": [str], "on_transfer": Enum(["none", "add"])},
     "outcomes": {
         "table": [{"outcome": str, "reasons": [str], "when": str}],

@@ -14,6 +14,7 @@ python dev/check_claude_login.py           # "auth: Claude login" or API key, mo
 python dev/test_spec_schema.py | tail -1   # all good
 python dev/test_dates.py | tail -1         # all good
 python dev/test_negotiation.py | tail -1   # all good
+python dev/test_generate.py | tail -1      # all good (about 2 minutes)
 python dev/check_no_brief_literals.py | tail -1   # clean
 ```
 

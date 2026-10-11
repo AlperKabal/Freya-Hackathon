@@ -255,3 +255,109 @@ fixed "this call is recorded". Lint and snippet runs pass.
 - Cleanup does not change workflow generation or qualify orch for submission.
 - Verification after cleanup: `test_spec_schema.py`, `test_dates.py`, and
   `test_negotiation.py` passed; `check_no_brief_literals.py` reported clean.
+
+### Branch `alper/hybrid-builder`: human-phrasing parser fixes (2026-10-11, group A)
+
+Found by manual tests (`tools/practice.py`) and a review; all verified locally first (12 failing date tests, amount
+tests failing) and fixed in the snippets only. No build, no simulation yet.
+
+- `resolve_spoken_date`: a negated today ("not today, Friday", "I can't pay right now", "not now") was read as
+  TODAY, which would record a promise for today. Negated today/now is now removed before matching. A
+  self-correction ("tomorrow, no sorry, Friday") keeps the last day named. "next week Tuesday" / "Tuesday next week"
+  is always the following calendar week (it was this week's Tuesday when said on a Monday). "end of October",
+  "early November", "mid October" are vague periods (they were `none`).
+- `parse_amount`: a day number in the amount field was taken as the amount ("on the 16th I can pay 200" -> 16);
+  day tokens are removed first. Cents in words ("... and twenty cents") are added. A spoken pair ("twelve fifty")
+  is read as hundreds (1250) unless only the decimal reading (12.50) lies in the account's range (smallest floor,
+  largest full amount), which `step` now passes.
+- `step` keeps an internal error in `state['err']`; `neg_eval` writes it to `vars['neg_error']`, so a silent
+  "Sorry, could you say that again?" loop shows in the transcript. `codegen.date_config` already writes
+  `business_day_only`; a new test checks every config key the date snippet reads is written.
+- All new phrasings are tests in `dev/test_dates.py` (3b, 3c) and `dev/test_negotiation.py`. Checks: the four
+  suites pass, literal check clean; local `generate` + `verify.lint` + `verify.run_snippets` clean for the extracted
+  A and A+B SPECs in v1 and orch mode.
+- Still to verify on the platform: one practice run per brief after the remaining group B/C changes.
+
+### Branch `alper/hybrid-builder`: classification and counters (2026-10-11, group B)
+
+Found in manual calls: "I can't, what are the other options" was classified `restructuring_request` and transferred
+(expected: a flat refusal, attempt 1, the question answered); in identity, a decline after the explanation was
+handled one turn late (the model counted declines). No build, no simulation yet.
+
+- Situations that end or transfer the call (call scope, no offer, reachable after the opening) get a generic
+  look-alike guard in every place a model reads them (v1 prompt and tool transitions, orch `reply_kind`): only an
+  explicit request counts; a plain no, "I can't pay", or a question about options is not it. Mechanism text only.
+- `not_this` was appended to the trigger without a label, so the look-alikes read like part of the trigger
+  ("requests a new plan. Saying the full amount is too much ..."). Now `Gen.sit_desc`: "<trigger>. NOT this: <...>".
+  The extractor prompt asks `not_this` of a call-ending situation to also name the everyday look-alikes.
+- orch `reply_kind`: "when a special situation applies, choose it over the others" replaced by "only when its
+  description clearly fits; a refusal plus a question is refuse". New field `asks_question` (yes/no): when the turn
+  is decided as `talk` and the customer also asked something, `neg_eval` routes to `negotiate_q` so the question is
+  answered and the decided sentence is still said word for word.
+- identity: new enum `id_reply` (answer / decline / question / unclear; decline wins over a question) routes a
+  decline to code node `id_count`, which counts one decline per customer turn (guard: `identity.total_turns`) and
+  closes on `identity.decline.max_declines`; the SPEC's explanation is said once, at the first decline. The
+  model-driven `transition_to_set_identity_declined` is removed. Unverified on the platform: that the identity node
+  answers in the same turn after the code hop (seen for other nodes, see "Same-turn reply after a code-node hop").
+- The transfer farewell adds "I am connecting you now." only when the SPEC's sentence does not already say it.
+- `dev/show_call.py` warns when the call had no readable `now` (`clock_ok = no`) or `neg_error` is set.
+- New test `dev/test_generate.py` (50 checks: lint, snippets, the id_count counter run step by step, guards, orch
+  fields) for brief-a and brief-ab in v1 and orch. All five suites pass, literal check clean.
+
+### Branch `alper/hybrid-builder`: generality fixes (2026-10-11, group C)
+
+SPEC fields that the extractor fills but the generator ignored, and API shapes the generator assumed. Each fix keeps
+the reference behaviour when the SPEC matches Brief A/B (checked: for the extracted A and A+B SPECs the v1 workflow
+changes only by group B's guard text and the new `id_count` node). No build, no simulation yet.
+
+- C11 identity API without `all_verified` / `wrong_left`: the routing to the account needed `all_verified == true`,
+  so such an API would never leave identity. The verify pre-hook stores the question field; the post-hook marks
+  each verified field and sets `id_all_ok` when every SPEC question is verified (the API's own flag wins when it is
+  present); wrong answers are counted against `identity.max_wrong_total` (was unused) into `id_left`. Routing reads
+  both; response mappings to empty field names are no longer emitted.
+- C12 amount rules: `amounts.first_offer`, `accept_min`, `accept_max`, `too_much.offer`, `below_min.offer` were
+  unused (the prompt and the state machine assumed full / floor). `prepare_deal` computes them per product into the
+  plan (`first`, `lo`, `hi`, `tm`, `bm`); `negotiation.py` uses them (older plans fall back). When the rules are
+  the common ladder (`Gen.amount_std`), the v1 prompt keeps its wording; otherwise each product's FACTS list its
+  AMOUNT RULES and the prompt points there.
+- C13 situations with a `callback` action did nothing (only `transfer` ran). New `callback_flow`: ask for a day and
+  a time, the shared window check (`CB_CHECK`, the third-party code moved into `callback_nodes`), engine-run
+  `schedule_callback`, then the situation's other actions and outcome; not booked -> the SPEC's not-scheduled outcome.
+- C14 `multi_product.one_date_clamped_per_product` (was unused; Brief B rule 6 was hard-wired in the v1 prompt and
+  in `_date_for_all`) now gates both.
+- Still unused SPEC fields (not changed here): `outcomes.transfer_after_promise`, `multi_product.unrecorded_on_transfer`,
+  `single_read_back`, `state_all_first`, `ask_all_today_once`, `attempts_per_product`,
+  `notes.for_each_product_without_promise`, `situations[].say_exact`. The generator behaves as Brief A/B say for these.
+- `dev/test_generate.py` now 80 checks (C11-C14 on modified SPEC copies, run through the real hooks, code nodes
+  and state machine). All five suites pass, literal check clean; extracted A, A+B and raw-A SPECs lint and run their
+  snippets clean in both modes.
+
+### Branch `alper/hybrid-builder`: the remaining SPEC switches (2026-10-11)
+
+The eight SPEC fields the generator ignored now drive the agent, in both modes. Reviewed with a second model first;
+its two corrections are in: finalize takes a product's reason from its state (not only from a note), and the
+call-wide attempt count has its own field. No build, no simulation yet.
+
+| Field | v1 (prompt) | orch (code) |
+|---|---|---|
+| `outcomes.transfer_after_promise` = promise_wins | exit node: a recorded promise (`res_i`) sets the promise outcome | same exit node |
+| `multi_product.unrecorded_on_transfer` = record | situation line: call create_promise for confirmed, unrecorded promises first | `neg_eval` marks agreed products pending; a second record chain (`rx_<situation>_*`) runs before the transfer |
+| `notes.for_each_product_without_promise` = false | rule G: no note for used-up attempts; "every product done" includes "no promise" | `pnote_i` skips a product that ended by used-up attempts (`p<i>_end_why`) and keeps `p<i>_end_reason` |
+| finalize (both) | a product without a note has a reason from its state (else the exhausted reason), in product order, when the switch above is false | same |
+| `multi_product.single_read_back` = false | rule E: read back each promise alone when agreed, then record it | state machine: per-product read-back (`confirming`), record when all agreed ones are confirmed |
+| `multi_product.state_all_first` = false | opening states product 1; FACTS carry each Statement | each product's statement is said when it is reached (implies "today" per product) |
+| `multi_product.ask_all_today_once` = false | "ask about today for each product" | per-product today question; a no to it is not an attempt |
+| `multi_product.attempts_per_product` = false + new `negotiation.call_attempt_limit` | step 2 names the call's limit, or that earlier attempts count | `state['used']` caps the call's attempts; without a limit the band's own limit caps the total; build trace warns |
+| `situations[].say_exact` | product situation: "Say exactly: '<say>'" | offers with exact words are spoken by TTS (also v1) |
+
+- New SPEC field `negotiation.call_attempt_limit` (optional int); schema comments and extractor hints say what each
+  switch means, so a hidden brief is read the same way.
+- Checked with a before/after compare of the generated workflows (prompts, transitions, tools identical; every code
+  node and hook run old and new on the same vars): for the extracted A, A+B and the reference SPECs the only
+  differences are the new `statement` key in the plan and, for the hand-written brief-ab SPEC only, the say_exact
+  line for `already_paid` (its `say_exact` is true there, false in the extracted SPEC).
+- `dev/test_generate.py`: 146 checks (66 for the switches, each on a brief-ab copy with one switch changed, run through
+  the real prepare_deal plan and state machine). All five suites pass. The literal check caught a Brief A sentence
+  used as a fallback in the new per-product today question; replaced by a generic sentence.
+- Imaginary Brief C lints with 56 (v1) / 50 (orch) problems against Brief A's tool API: the same before this branch
+  (its field names are renamed and it has no tool API file of its own). Not a regression.
