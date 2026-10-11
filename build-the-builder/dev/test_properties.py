@@ -13,7 +13,10 @@ calendar days and product mixes, for three banks' SPECs. No single answer is exp
     amount of their own (a proposal is never a refusal), never through the agent's doing;
  7. what is recorded is what the last read-back said;
  8. a customer who only refuses, or only agrees, ends the negotiation within a few turns;
- 9. the state survives being written to a variable and read back (JSON) at every turn, as on the platform.
+ 9. the state survives being written to a variable and read back (JSON) at every turn, as on the platform;
+10. a read-back is worded as the customer's promise, never as an offer;
+11. an offer of an amount below the full one carries the SPEC's sentence for it ("the rest stays overdue");
+12. "Could you make that payment" stands only for the amount the customer already heard with that sentence.
 """
 import datetime as dt, json, pathlib, random, sys
 KIT = pathlib.Path(__file__).resolve().parent.parent
@@ -69,6 +72,27 @@ def random_event(rng, plan, today, product_kinds):
     return {"kind": kind, "day": day, "amount": amount, "about": about}
 
 
+def roles(say, state, plan, cfg):
+    """10-12: each sentence has one role. A read-back is never worded as an offer; an offer below the full amount
+    carries the SPEC's sentence for it; 'that payment' is only the amount the customer already heard."""
+    out, text = [], str(say or "")
+    text = text[len("ASK_FIRST: "):] if text.startswith("ASK_FIRST: ") else text
+    if cfg.get("confirm_question") and text.endswith(cfg["confirm_question"]) and "for your" in text and "Let me read your promise back: you will pay " not in text:
+        out.append(f"10 a read-back worded as something else: {text!r}")
+    if "Let me read your promise back" in text and "Can you pay" in text.split("Let me read your promise back")[1]:
+        out.append(f"10 a read-back that is also an offer: {text!r}")
+    for i, pp in enumerate(plan):
+        for m in __import__("re").finditer(r"Can you pay (\d+\.\d{2}) for your " + __import__("re").escape(pp["name"]) + r" on [^?]+\?", text):
+            amt = float(m.group(1))
+            if amt < pp["full"] - 0.005 and cfg.get("too_much_say") and cfg["too_much_say"] not in text:
+                out.append(f"11 product {i + 1}: {amt} offered below the full {pp['full']} without the SPEC's sentence: {text!r}")
+        if ("Could you make that payment for your " + pp["name"] + " ") in text:
+            x = state["p"][i]
+            if x.get("named_amt") is None or abs(x["offer_amt"] - x["named_amt"]) > 0.005:
+                out.append(f"12 product {i + 1}: 'that payment' for {x['offer_amt']}, the customer heard {x.get('named_amt')}: {text!r}")
+    return out
+
+
 def one_run(spec, cfg, plan, today, rng, product_kinds):
     """One random conversation. Returns a list of broken invariants (empty when all hold)."""
     broken = []
@@ -81,6 +105,7 @@ def one_run(spec, cfg, plan, today, rng, product_kinds):
         state = json.loads(json.dumps(state))                 # 9: the state is a variable on the platform
         state, say, nxt = step(state, ev, plan, today, cfg)
         says.append(say)
+        broken += roles(say, state, plan, cfg)
         if state.get("err"):
             broken.append(f"1 internal error: {state['err']}")
         if nxt not in ("talk", "record", "close") or (nxt == "talk" and not str(say).strip()):
