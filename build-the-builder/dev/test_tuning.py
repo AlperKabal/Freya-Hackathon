@@ -115,5 +115,47 @@ for said, want in (("right now I can't, maybe Friday", "2026-10-16"), ("today I 
                    ("I can pay right now", "2026-10-14"), ("yes, today works", "2026-10-14"), ("today", "2026-10-14"), ("not today", "")):
     check(f"day {said!r}", ns["resolve_spoken_date"](said, WED, cfg)["date"], want)
 
+# ---------------------------------------------------------------- 5. the Reworder never leaves "recorded" silently
+import asyncio, copy
+from builder import extract
+
+
+class T:
+    def __init__(self): self.lines = []
+    def event(self, kind, text): self.lines.append((kind, text))
+
+
+def run_reword(replies, sentence):
+    """reword_pre_success with a fake model that gives `replies` in turn; -> (the sentence after, the trace lines)."""
+    it = iter(replies)
+    async def fake(system, prompt, purpose, trace=None, **kw):
+        r = next(it)
+        if isinstance(r, Exception): raise r
+        return {"sentence": r}
+    old, extract.ask_json = extract.ask_json, fake
+    try:
+        spec = copy.deepcopy(SPEC_A)
+        spec["opening"]["first_sentence"] = sentence
+        t = T()
+        asyncio.run(extract.reword_pre_success(spec, t))
+        return spec["opening"]["first_sentence"], t.lines
+    finally:
+        extract.ask_json = old
+
+
+NOTICE = "Hello, this is the bank's digital assistant, and this call is recorded."
+s, lines = run_reword(["Hello, this is the bank's digital assistant, and this call is being recorded.", "Hello, I am the bank's assistant, and we record this call."], NOTICE)
+check("a rewording that keeps the word is sent back once, the second one is used", s, "Hello, I am the bank's assistant, and we record this call.")
+s, lines = run_reword(["... this call is being recorded.", "... this call is recorded."], NOTICE)
+check("two failed rewordings: the notice is put in the active voice by rule", s, "Hello, this is the bank's digital assistant, and we record this call.")
+check("the rule's rewording is in the trace", any(k == "spec" and "reworded" in x for k, x in lines), True)
+s, lines = run_reword([extract.LLMError("no reply"), extract.LLMError("no reply")], NOTICE)
+check("no model answer at all: the rule still rewords the notice", s, "Hello, this is the bank's digital assistant, and we record this call.")
+s, lines = run_reword(["Your payment is saved.", "Your payment is saved."], "Your payment is saved.")
+check("a sentence the rule cannot fix stays, with a warning in the trace", (s, any(k == "warning" for k, x in lines)), ("Your payment is saved.", True))
+for said, want in (("Calls are recorded for quality.", "We record calls for quality."), ("Hello. This conversation is monitored and recorded.", "Hello. We monitor and record this conversation."),
+                   ("Your promise is recorded.", "Your promise is recorded.")):
+    check(f"by rule: {said!r}", extract.reword_by_rule(said), want)
+
 print(f"\n{'all good' if not fails else f'{fails} failure(s)'}")
 sys.exit(1 if fails else 0)

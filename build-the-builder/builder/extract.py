@@ -164,19 +164,54 @@ def pre_success_sentences(spec):
     return out
 
 
+# The last resort when the model's rewording still holds a claim word: a recording notice ("this call is (being)
+# recorded", "calls are recorded") said in the active voice. Mechanism text, no brief content.
+_NOTICE = re.compile(r"\b(?:(this|the|your|our|all|these) )?(calls?|conversations?|line) (?:is|are|will be|may be|might be|can be|is being|are being) (recorded|monitored and recorded|recorded and monitored)\b", re.I)
+
+
+def reword_by_rule(sentence):
+    """'..., and this call is recorded.' -> '..., and we record this call.' Unchanged when no notice is found."""
+    def active(m):
+        det, noun = (m.group(1) or "").lower(), m.group(2).lower()
+        what = ("this call" if noun == "call" and det in ("this", "the", "your", "") else
+                f"{'all ' if det == 'all' else ''}{noun}" if det in ("all", "these") or noun.endswith("s") else f"this {noun}")
+        out = ("we monitor and record " if "monitored" in m.group(3).lower() else "we record ") + what
+        start = sentence[:m.start()].rstrip()
+        return out[0].upper() + out[1:] if not start or start.endswith((".", "!", "?")) else out
+    return _NOTICE.sub(active, sentence)
+
+
 async def reword_pre_success(spec, trace=None):
-    """Code finds the risky sentences; the model only rewrites those, one small call each, in parallel. A call that
-    fails leaves its sentence as it is."""
+    """Code finds the risky sentences; the model only rewrites those, one small call each, in parallel. A rewording
+    that still holds a claim word is sent back once with that word named; then a recording notice is put in the
+    active voice by rule. Every outcome is in the trace (11 October: a rewording kept "is being recorded", was
+    dropped without a trace line, and the opening went out saying "this call is recorded")."""
     todo = [(label, holder, key) for label, holder, key in pre_success_sentences(spec) if CLAIM_WORDS.search(holder[key])]
     async def one(label, holder, key):
-        try:
-            r = await ask_json(REWORDER, f"Sentence: {holder[key]}", f"Reworder: {label} before any save", trace, timeout=90)
-        except LLMError:
-            return
-        new = r.get("sentence") if isinstance(r, dict) else None
-        if isinstance(new, str) and new.strip() and not CLAIM_WORDS.search(new):
-            if trace: trace.event("spec", f"reworded {label}: {holder[key]!r} -> {new!r}")
-            holder[key] = new.strip()
+        old, new = holder[key], None
+        prompt = f"Sentence: {old}"
+        for attempt in (1, 2):
+            try:
+                r = await ask_json(REWORDER, prompt, f"Reworder: {label} before any save" + ("" if attempt == 1 else " (again)"), trace, timeout=90)
+            except LLMError:
+                break
+            cand = r.get("sentence") if isinstance(r, dict) else None
+            if isinstance(cand, str) and cand.strip() and not CLAIM_WORDS.search(cand):
+                new = cand.strip()
+                break
+            bad = CLAIM_WORDS.search(cand if isinstance(cand, str) else "")
+            word = repr(bad.group(0)) if bad else "it"
+            prompt = (f"Sentence: {old}\n\nYour rewording {cand!r} still uses the word {word}. "
+                      "Use none of these words: recorded, saved, booked, registered, logged (for example: 'we record this call').")
+        if new is None:
+            by_rule = reword_by_rule(old)
+            if not CLAIM_WORDS.search(by_rule):
+                new = by_rule
+        if new is not None:
+            if trace: trace.event("spec", f"reworded {label}: {old!r} -> {new!r}")
+            holder[key] = new
+        elif trace:
+            trace.event("warning", f"{label} still holds a word that reads as 'it was saved': {old!r}")
     await asyncio.gather(*(one(*x) for x in todo))
     return spec
 
