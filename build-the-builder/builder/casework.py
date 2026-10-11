@@ -654,7 +654,10 @@ def assemble(design, tools, variables=None, speech=None):
                                                                                       "spoken_message": {"type": "string", "default": "{{farewell}}"}}}}}}
     system = (f"You are a phone agent: {design['role']} Speak {design['language']} with the customer, always. Every turn is one or two short spoken sentences, "
               "no lists, no markdown. Your instructions are complete: follow them step by step and add nothing of your own. A fact you were not given by your "
-              "instructions or by a service answer you do not have: say so instead of guessing.")
+              "instructions or by a service answer you do not have: say so instead of guessing. "
+              "When any path says to end, transfer, or return to a menu, call its ending transition tool in that same response. "
+              "Never speak the fixed closing words yourself or wait for another caller turn after deciding to end; the ending tool speaks them. "
+              "A thanks or goodbye after the required answer is a decision to end now, even if the caller might speak again.")
     if any("repeat" in rule.lower() and "digit" in rule.lower() for rule in design["never"]):
         system += (" Do not echo any digit sequence that the caller has spoken, even if a scripted sentence or a service answer contains it. "
                    "Use a neutral reference to the chosen item, and ask for the next distinguishing detail without restating the digits. "
